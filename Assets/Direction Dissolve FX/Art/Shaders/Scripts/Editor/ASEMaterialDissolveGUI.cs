@@ -8,7 +8,7 @@ using UnityEngine.Rendering.Universal;
 
 namespace NKStudio
 {
-    public class ASEMaterialOutlineGUI : BaseShaderGUI
+    public class ASEMaterialDissolveGUI : BaseShaderGUI
     {
         private MaterialProperty _metallic;
         private MaterialProperty _metallicGlossMap;
@@ -23,14 +23,17 @@ namespace NKStudio
         private MaterialProperty _highlights;
         private MaterialProperty _reflections;
         
-        // Outline
-        private MaterialProperty _outlineWidth;
-        private MaterialProperty _outlineColor;
-        private MaterialProperty _outlineExtrudeMethod;
-        private MaterialProperty _outlineOffset;
-        private MaterialProperty _outlineZPostionInCamera;
-        private MaterialProperty _alphaBaseCutout;
-
+        // Dissolve
+        private MaterialProperty _edgeWidth;
+        private MaterialProperty _edgeColor;
+        private MaterialProperty _edgeColorIntensity;
+        private MaterialProperty _noiseScale;
+        private MaterialProperty _dissolveOffset;
+        private MaterialProperty _BOOLEAN_DIRECTION_FROM_EULERANGLE;
+        private MaterialProperty _dissolveDirection;
+        private MaterialProperty _noiseUVSpeed;
+        private MaterialProperty _directionEdgeWidthScale;
+        
         private static readonly GUIContent DitherTex =
             new GUIContent("Dither", "Dither recommends an Alpha Clipping Threshold of 1f.");
         
@@ -57,13 +60,16 @@ namespace NKStudio
             _highlights = FindProperty("_SpecularHighlights", properties);
             _reflections = FindProperty("_EnvironmentReflections", properties);
             
-            // Outline Props
-            _outlineWidth = FindProperty("_OutlineWidth", properties);
-            _outlineColor = FindProperty("_OutlineColor", properties);
-            _outlineExtrudeMethod = FindProperty("_OutlineExtrudeMethod", properties);
-            _outlineOffset = FindProperty("_OutlineOffset", properties);
-            _outlineZPostionInCamera = FindProperty("_OutlineZPostionInCamera", properties);
-            _alphaBaseCutout = FindProperty("_AlphaBaseCutout", properties);
+            // Dissolve Props
+            _edgeWidth = FindProperty("_EdgeWidth", properties);
+            _edgeColor = FindProperty("_EdgeColor", properties);
+            _edgeColorIntensity = FindProperty("_EdgeColorIntensity", properties);
+            _noiseScale = FindProperty("_NoiseScale", properties);
+            _dissolveOffset = FindProperty("_DissolveOffset", properties);
+            _BOOLEAN_DIRECTION_FROM_EULERANGLE = FindProperty("BOOLEAN_DIRECTION_FROM_EULERANGLE", properties);
+            _dissolveDirection = FindProperty("_DissolveDirection", properties);
+            _directionEdgeWidthScale = FindProperty("_DirectionEdgeWidthScale", properties);
+            _noiseUVSpeed = FindProperty("_NoiseUVSpeed", properties);
         }
 
         public override void OnGUI(MaterialEditor materialEditorIn, MaterialProperty[] properties)
@@ -88,7 +94,7 @@ namespace NKStudio
 
         private void DrawNKLitShaderGUI(Material material)
         {
-            DrawHeader("Lit Outline");
+            DrawHeader("Lit Dissolve + Outline");
 
             EditorGUI.BeginChangeCheck();
             {
@@ -142,16 +148,21 @@ namespace NKStudio
                 EditorGUILayout.Separator();
                 InspectorBox(10, () =>
                 {
-                    EditorGUILayout.LabelField("Other System", EditorStyles.boldLabel);
-
+                    EditorGUILayout.LabelField("Dissolve System", EditorStyles.boldLabel);
+                    materialEditor.ShaderProperty(_edgeWidth, "Edge Width");
+                    materialEditor.ShaderProperty(_directionEdgeWidthScale, "Direction Edge Width Scale");
+                    materialEditor.ShaderProperty(_noiseScale, "Noise Scale");
+                    EditorGUILayout.Space(3);
+                    materialEditor.ShaderProperty(_edgeColor, "Edge Color");
+                    materialEditor.ShaderProperty(_edgeColorIntensity, "Edge Color Intensity");
+                    EditorGUILayout.Space(3);
+                    _noiseUVSpeed.vectorValue = EditorGUILayout.Vector2Field(_noiseUVSpeed.displayName, _noiseUVSpeed.vectorValue);
+                    _dissolveOffset.vectorValue = EditorGUILayout.Vector3Field(_dissolveOffset.displayName, _dissolveOffset.vectorValue);
+                    _dissolveDirection.vectorValue = EditorGUILayout.Vector3Field(_dissolveDirection.displayName, _dissolveDirection.vectorValue);
+                    
+                    materialEditor.ShaderProperty(_BOOLEAN_DIRECTION_FROM_EULERANGLE, "Direction From Euler Angle");
                     GUILayout.Space(5); // ----------------------------------------------------------------------
-
-                    materialEditor.ShaderProperty(_outlineWidth, "Outline Width");
-                    materialEditor.ShaderProperty(_outlineColor, "Outline Color");
-                    materialEditor.ShaderProperty(_outlineExtrudeMethod, "Outline Extrude Method");
-                    materialEditor.ShaderProperty(_outlineOffset, "Outline Offset");
-                    materialEditor.ShaderProperty(_outlineZPostionInCamera, "Outline Z Position In Camera");
-                    materialEditor.ShaderProperty(_alphaBaseCutout, "Alpha Base Cutout");
+                    
                 });
 
                 EditorGUILayout.Separator(); // ------------------------------------------------------------------------
