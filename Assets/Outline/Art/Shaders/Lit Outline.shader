@@ -1,4 +1,4 @@
-Shader "Amplify Shader Editor/LitOutline"
+Shader "Universal Render Pipeline/Lit Outline"
 {
 	Properties
 	{
@@ -211,14 +211,14 @@ Shader "Amplify Shader Editor/LitOutline"
             
 
             CBUFFER_START(UnityPerMaterial)
-                uniform float4 _BaseMap_ST;
-                uniform half _OutlineWidth;
-                uniform int _OutlineExtrudeMethod;
-                uniform half3 _OutlineOffset;
-                uniform half _OutlineZPostionInCamera;
-                uniform half _Cutoff;
-                uniform half _AlphaBaseCutout;
-                uniform half4 _OutlineColor;
+                float4 _BaseMap_ST;
+                half _OutlineWidth;
+                int _OutlineExtrudeMethod;
+                half3 _OutlineOffset;
+                half _OutlineZPostionInCamera;
+                half _Cutoff;
+                half _AlphaBaseCutout;
+                half4 _OutlineColor;
             CBUFFER_END
 
 

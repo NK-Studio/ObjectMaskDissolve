@@ -1526,10 +1526,10 @@
         "m_Expanded": true,
         "m_Position": {
             "serializedVersion": "2",
-            "x": -286.00006103515627,
-            "y": 361.0000305175781,
-            "width": 255.00001525878907,
-            "height": 350.0
+            "x": -291.4285888671875,
+            "y": 362.28570556640627,
+            "width": 253.142822265625,
+            "height": 376.5714111328125
         }
     },
     "m_Slots": [
@@ -1818,7 +1818,7 @@
     "m_CustomColors": {
         "m_SerializableColors": []
     },
-    "m_HashType": 1
+    "m_HashType": 0
 }
 
 {
@@ -4037,10 +4037,10 @@
         "m_Expanded": true,
         "m_Position": {
             "serializedVersion": "2",
-            "x": -1237.0,
-            "y": 482.9999694824219,
-            "width": 247.0,
-            "height": 302.0
+            "x": -1238.2857666015625,
+            "y": 484.5714111328125,
+            "width": 218.28570556640626,
+            "height": 304.57147216796877
         }
     },
     "m_Slots": [
