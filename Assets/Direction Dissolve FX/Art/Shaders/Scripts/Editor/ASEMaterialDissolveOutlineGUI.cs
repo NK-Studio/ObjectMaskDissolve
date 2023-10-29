@@ -8,7 +8,7 @@ using UnityEngine.Rendering.Universal;
 
 namespace NKStudio
 {
-    public class ASEMaterialDissolveGUI : BaseShaderGUI
+    public class ASEMaterialDissolveOutlineGUI : BaseShaderGUI
     {
         private MaterialProperty _metallic;
         private MaterialProperty _metallicGlossMap;
@@ -33,6 +33,14 @@ namespace NKStudio
         private MaterialProperty _dissolveDirection;
         private MaterialProperty _noiseUVSpeed;
         private MaterialProperty _directionEdgeWidthScale;
+
+        // Outline
+        private MaterialProperty _outlineWidth;
+        private MaterialProperty _outlineColor;
+        private MaterialProperty _outlineExtrudeMethod;
+        private MaterialProperty _outlineOffset;
+        private MaterialProperty _outlineZPostionInCamera;
+        private MaterialProperty _alphaBaseCutout;
         
         private static readonly GUIContent DitherTex =
             new GUIContent("Dither", "Dither recommends an Alpha Clipping Threshold of 1f.");
@@ -70,6 +78,14 @@ namespace NKStudio
             _dissolveDirection = FindProperty("_DissolveDirection", properties);
             _directionEdgeWidthScale = FindProperty("_DirectionEdgeWidthScale", properties);
             _noiseUVSpeed = FindProperty("_NoiseUVSpeed", properties);
+            
+            // Outline Props
+            _outlineWidth = FindProperty("_OutlineWidth", properties);
+            _outlineColor = FindProperty("_OutlineColor", properties);
+            _outlineExtrudeMethod = FindProperty("_OutlineExtrudeMethod", properties);
+            _outlineOffset = FindProperty("_OutlineOffset", properties);
+            _outlineZPostionInCamera = FindProperty("_OutlineZPostionInCamera", properties);
+            _alphaBaseCutout = FindProperty("_AlphaBaseCutout", properties);
         }
 
         public override void OnGUI(MaterialEditor materialEditorIn, MaterialProperty[] properties)
@@ -94,7 +110,7 @@ namespace NKStudio
 
         private void DrawNKLitShaderGUI(Material material)
         {
-            DrawHeader("Lit Dissolve");
+            DrawHeader("Lit Dissolve Outline");
 
             EditorGUI.BeginChangeCheck();
             {
@@ -164,6 +180,7 @@ namespace NKStudio
                     _dissolveDirection.vectorValue = EditorGUILayout.Vector3Field(_dissolveDirection.displayName,
                         _dissolveDirection.vectorValue);
                     materialEditor.ShaderProperty(_BOOLEAN_DIRECTION_FROM_EULERANGLE, "Direction From Euler Angle");
+                    
                     EditorGUI.EndDisabledGroup();
                     
                     GUILayout.Space(5); // ----------------------------------------------------------------------
@@ -171,6 +188,20 @@ namespace NKStudio
 
                 EditorGUILayout.Separator(); // ------------------------------------------------------------------------
 
+                InspectorBox(10, () =>
+                {
+                    EditorGUILayout.LabelField("Outline System", EditorStyles.boldLabel);
+                    materialEditor.ShaderProperty(_outlineWidth, "Outline Width");
+                    materialEditor.ShaderProperty(_outlineColor, "Outline Color");
+                    materialEditor.ShaderProperty(_outlineExtrudeMethod, "Outline Extrude Method");
+                    materialEditor.ShaderProperty(_outlineOffset, "Outline Offset");
+                    materialEditor.ShaderProperty(_outlineZPostionInCamera, "Outline Z Position In Camera");
+                    materialEditor.ShaderProperty(_alphaBaseCutout, "Alpha Base Cutout");
+                    GUILayout.Space(5); // ----------------------------------------------------------------------
+                });
+                
+                EditorGUILayout.Separator(); // ------------------------------------------------------------------------
+                
                 InspectorBox(10, () =>
                 {
                     GUILayout.Label(Styles.AdvancedLabel, EditorStyles.boldLabel);

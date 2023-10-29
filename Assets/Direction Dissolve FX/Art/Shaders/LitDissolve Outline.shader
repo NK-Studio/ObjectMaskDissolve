@@ -1,8 +1,10 @@
-Shader "Universal Render Pipeline/Lit Outline"
+Shader "Universal Render Pipeline/Lit Dissolve Outline"
 {
 	Properties
 	{
 		[HideInInspector] _AlphaCutoff("Alpha Cutoff ", Range(0, 1)) = 0.5
+		[Toggle(BOOLEAN_USE_WROLDSPACE_ON)] BOOLEAN_USE_WROLDSPACE("UseWorldSpace", Float) = 0
+		[Toggle(BOOLEAN_WORLDORIGIN_ON)] BOOLEAN_WORLDORIGIN("WorldSpaceOffset", Float) = 0
 		_BaseMap("BaseMap", 2D) = "white" {}
 		[Gamma]_BaseColor("BaseColor", Color) = (1,1,1,1)
 		[Normal]_BumpMap("BumpMap", 2D) = "bump" {}
@@ -19,8 +21,18 @@ Shader "Universal Render Pipeline/Lit Outline"
 		_EmissionMap("EmissionMap", 2D) = "white" {}
 		[HDR]_EmissionColor("EmissionColor", Color) = (0,0,0,0)
 		[Toggle]_AlphaClip("__clip", Float) = 0
-		_Cutoff("Alpha Cutoff", Range( 0 , 1)) = 0.5
 		
+		// Dissolve
+		_EdgeWidth("EdgeWidth", Range( 0 , 1)) = 0.05
+		[HDR]_EdgeColor("EdgeColor", Color) = (0,2.917647,2.980392,1)
+		_DirectionEdgeWidthScale("DirectionEdgeWidthScale", Float) = 10
+		_EdgeColorIntensity("EdgeColorIntensity", Float) = 1
+		_NoiseScale("NoiseScale", Float) = 50
+		_DissolveOffset("DissolveOffset", Vector) = (0,0,0,0)
+		[Toggle(BOOLEAN_DIRECTION_FROM_EULERANGLE_ON)] BOOLEAN_DIRECTION_FROM_EULERANGLE("DissolveDirection Is EulerAngle", Float) = 0
+		_DissolveDirection("Dissolve Direction", Vector) = (0,0.1,0,0)
+		_NoiseUVSpeed("NoiseUVSpeed", Vector) = (1,1,0,0)
+
 		// Outline
 		_OutlineWidth ("Width", Float ) = 0.5
         [HDR] _OutlineColor ("Color", Color) = (0.0,0.0,0.0,1.0)
@@ -28,7 +40,21 @@ Shader "Universal Render Pipeline/Lit Outline"
         _OutlineOffset ("Outline Offset", Vector) = (0,0,0)
         _OutlineZPostionInCamera ("Outline Z Position In Camera", Float) = 0.0
         [ToggleOff] _AlphaBaseCutout ("Alpha Base Cutout", Float ) = 1.0
-		
+
+		//_TransmissionShadow( "Transmission Shadow", Range( 0, 1 ) ) = 0.5
+		//_TransStrength( "Trans Strength", Range( 0, 50 ) ) = 1
+		//_TransNormal( "Trans Normal Distortion", Range( 0, 1 ) ) = 0.5
+		//_TransScattering( "Trans Scattering", Range( 1, 50 ) ) = 2
+		//_TransDirect( "Trans Direct", Range( 0, 1 ) ) = 0.9
+		//_TransAmbient( "Trans Ambient", Range( 0, 1 ) ) = 0.1
+		//_TransShadow( "Trans Shadow", Range( 0, 1 ) ) = 0.5
+		//_TessPhongStrength( "Tess Phong Strength", Range( 0, 1 ) ) = 0.5
+		//_TessValue( "Tess Max Tessellation", Range( 1, 32 ) ) = 16
+		//_TessMin( "Tess Min Distance", Float ) = 10
+		//_TessMax( "Tess Max Distance", Float ) = 25
+		//_TessEdgeLength ( "Tess Edge length", Range( 2, 50 ) ) = 16
+		//_TessMaxDisp( "Tess Max Displacement", Float ) = 25
+
 		[HideInInspector][ToggleOff] _SpecularHighlights("Specular Highlights", Float) = 1.0
 		[HideInInspector][ToggleOff] _EnvironmentReflections("Environment Reflections", Float) = 1.0
 		[HideInInspector][ToggleOff] _ReceiveShadows("Receive Shadows", Float) = 1.0
@@ -60,7 +86,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 		HLSLINCLUDE
 		#pragma target 4.5
 		#pragma prefer_hlslcc gles
-		#pragma only_renderers d3d11 metal // ensure rendering platforms toggle list is visible
+		// ensure rendering platforms toggle list is visible
 
 		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Filtering.hlsl"
@@ -299,8 +325,8 @@ Shader "Universal Render Pipeline/Lit Outline"
                 outColor = half4(color, 1);
             }
             ENDHLSL
-        }
-        
+        }		
+
 		Pass
 		{
 			
@@ -327,7 +353,6 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#pragma shader_feature_local_fragment _ALPHATEST_ON
 			#pragma shader_feature_local _NORMALMAP
 			#define ASE_SRP_VERSION 140008
-			#define ASE_USING_SAMPLING_MACROS 1
 
 
 			#pragma shader_feature_local _RECEIVE_SHADOWS_OFF
@@ -385,6 +410,10 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#define ASE_NEEDS_FRAG_WORLD_NORMAL
 			#define ASE_NEEDS_FRAG_WORLD_BITANGENT
 			#define ASE_NEEDS_FRAG_WORLD_VIEW_DIR
+			#define ASE_NEEDS_FRAG_POSITION
+			#pragma shader_feature_local BOOLEAN_USE_WROLDSPACE_ON
+			#pragma shader_feature_local BOOLEAN_WORLDORIGIN_ON
+			#pragma shader_feature_local BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
 
 
 			#if defined(ASE_EARLY_Z_DEPTH_OPTIMIZE) && (SHADER_TARGET >= 45)
@@ -423,6 +452,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 					float2 dynamicLightmapUV : TEXCOORD7;
 				#endif
 				float4 ase_texcoord8 : TEXCOORD8;
+				float4 ase_texcoord9 : TEXCOORD9;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 				UNITY_VERTEX_OUTPUT_STEREO
 			};
@@ -430,15 +460,22 @@ Shader "Universal Render Pipeline/Lit Outline"
 			CBUFFER_START(UnityPerMaterial)
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
 			float4 _EmissionColor;
-			float _SmoothnessTextureChannel;
-			float _AlphaClip;
-			float _Parallax;
-			float _BumpScale;
+			float3 _DissolveDirection;
+			float3 _DissolveOffset;
+			float2 _NoiseUVSpeed;
 			float _Metallic;
+			float _EdgeColorIntensity;
+			float _DirectionEdgeWidthScale;
+			float _SmoothnessTextureChannel;
 			float _Smoothness;
+			float _EdgeWidth;
+			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
-			float _Cutoff;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -471,18 +508,13 @@ Shader "Universal Render Pipeline/Lit Outline"
 				int _PassValue;
 			#endif
 
-			TEXTURE2D(_BaseMap);
-			TEXTURE2D(_ParallaxMap);
-			SAMPLER(sampler_ParallaxMap);
-			SAMPLER(sampler_BaseMap);
-			TEXTURE2D(_BumpMap);
-			SAMPLER(sampler_BumpMap);
-			TEXTURE2D(_EmissionMap);
-			SAMPLER(sampler_EmissionMap);
-			TEXTURE2D(_MetallicGlossMap);
+			sampler2D _BaseMap;
+			sampler2D _ParallaxMap;
+			sampler2D _BumpMap;
+			sampler2D _EmissionMap;
+			sampler2D _MetallicGlossMap;
 			SAMPLER(sampler_MetallicGlossMap);
-			TEXTURE2D(_OcclusionMap);
-			SAMPLER(sampler_OcclusionMap);
+			sampler2D _OcclusionMap;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"
@@ -500,7 +532,49 @@ Shader "Universal Render Pipeline/Lit Outline"
 				return h* (v.xy / v.z);
 			}
 			
-			half4 SampleMetallicSpecGloss( TEXTURE2D(tex), SamplerState ss, half2 uv, half albedoAlpha, half metallic, half smoothness )
+			inline float noise_randomValue (float2 uv) { return frac(sin(dot(uv, float2(12.9898, 78.233)))*43758.5453); }
+			inline float noise_interpolate (float a, float b, float t) { return (1.0-t)*a + (t*b); }
+			inline float valueNoise (float2 uv)
+			{
+				float2 i = floor(uv);
+				float2 f = frac( uv );
+				f = f* f * (3.0 - 2.0 * f);
+				uv = abs( frac(uv) - 0.5);
+				float2 c0 = i + float2( 0.0, 0.0 );
+				float2 c1 = i + float2( 1.0, 0.0 );
+				float2 c2 = i + float2( 0.0, 1.0 );
+				float2 c3 = i + float2( 1.0, 1.0 );
+				float r0 = noise_randomValue( c0 );
+				float r1 = noise_randomValue( c1 );
+				float r2 = noise_randomValue( c2 );
+				float r3 = noise_randomValue( c3 );
+				float bottomOfGrid = noise_interpolate( r0, r1, f.x );
+				float topOfGrid = noise_interpolate( r2, r3, f.x );
+				float t = noise_interpolate( bottomOfGrid, topOfGrid, f.y );
+				return t;
+			}
+			
+			float SimpleNoise(float2 UV)
+			{
+				float t = 0.0;
+				float freq = pow( 2.0, float( 0 ) );
+				float amp = pow( 0.5, float( 3 - 0 ) );
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(1));
+				amp = pow(0.5, float(3-1));
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(2));
+				amp = pow(0.5, float(3-2));
+				t += valueNoise( UV/freq )*amp;
+				return t;
+			}
+			
+			float3 ObjectPosition19_g7(  )
+			{
+				return GetAbsolutePositionWS(UNITY_MATRIX_M._m03_m13_m23);
+			}
+			
+			half4 SampleMetallicSpecGloss( sampler2D tex, SamplerState ss, half2 uv, half albedoAlpha, half metallic, half smoothness )
 			{
 				    half4 specGloss;
 				    
@@ -532,6 +606,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
 				o.ase_texcoord8.xy = v.texcoord.xy;
+				o.ase_texcoord9 = v.vertex;
 				
 				//setting value to unused interpolator channels and avoid initialization warnings
 				o.ase_texcoord8.zw = 0;
@@ -741,16 +816,16 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float3 tanToWorld2 = float3( WorldTangent.z, WorldBiTangent.z, WorldNormal.z );
 				float3 ase_tanViewDir =  tanToWorld0 * WorldViewDirection.x + tanToWorld1 * WorldViewDirection.y  + tanToWorld2 * WorldViewDirection.z;
 				ase_tanViewDir = normalize(ase_tanViewDir);
-				float2 paralaxOffset282 = ParallaxOffset( SAMPLE_TEXTURE2D( _ParallaxMap, sampler_ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
+				float2 paralaxOffset282 = ParallaxOffset( tex2D( _ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
 				#ifdef _PARALLAXMAP
 				float2 staticSwitch297 = ( uv_BaseMap + paralaxOffset282 );
 				#else
 				float2 staticSwitch297 = uv_BaseMap;
 				#endif
-				float4 tex2DNode10 = SAMPLE_TEXTURE2D( _BaseMap, sampler_BaseMap, staticSwitch297 );
+				float4 tex2DNode10 = tex2D( _BaseMap, staticSwitch297 );
 				float4 BaseMap89 = ( tex2DNode10 * _BaseColor );
 				
-				float3 unpack21 = UnpackNormalScale( SAMPLE_TEXTURE2D( _BumpMap, sampler_BumpMap, staticSwitch297 ), _BumpScale );
+				float3 unpack21 = UnpackNormalScale( tex2D( _BumpMap, staticSwitch297 ), _BumpScale );
 				unpack21.z = lerp( 1, unpack21.z, saturate(_BumpScale) );
 				#ifdef _NORMALMAP
 				float3 staticSwitch223 = unpack21;
@@ -760,13 +835,53 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float3 Normal77 = staticSwitch223;
 				
 				#ifdef _EMISSION
-				float3 staticSwitch182 = ( (_EmissionColor).rgb * (SAMPLE_TEXTURE2D( _EmissionMap, sampler_EmissionMap, staticSwitch297 )).rgb );
+				float3 staticSwitch182 = ( (_EmissionColor).rgb * (tex2D( _EmissionMap, staticSwitch297 )).rgb );
 				#else
 				float3 staticSwitch182 = float3(0,0,0);
 				#endif
 				float3 Emissive104 = staticSwitch182;
+				float temp_output_2_0_g6 = _EdgeWidth;
+				float temp_output_1_0_g6 = 0.5;
+				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
+				float2 texCoord384 = IN.ase_texcoord8.xy * float2( 1,1 ) + float2( 0,0 );
+				float simpleNoise372 = SimpleNoise( ( texCoord384 + ( _NoiseUVSpeed * ( _TimeParameters.x * 0.005 ) ) )*_NoiseScale );
+				float3 temp_output_2_0_g7 = _DissolveOffset;
+				float3 objToWorld12_g7 = mul( GetObjectToWorldMatrix(), float4( IN.ase_texcoord9.xyz, 1 ) ).xyz;
+				float3 localObjectPosition19_g7 = ObjectPosition19_g7();
+				#ifdef BOOLEAN_WORLDORIGIN_ON
+				float3 staticSwitch15_g7 = temp_output_2_0_g7;
+				#else
+				float3 staticSwitch15_g7 = ( localObjectPosition19_g7 + temp_output_2_0_g7 );
+				#endif
+				#ifdef BOOLEAN_USE_WROLDSPACE_ON
+				float3 staticSwitch7_g7 = ( objToWorld12_g7 - staticSwitch15_g7 );
+				#else
+				float3 staticSwitch7_g7 = ( IN.ase_texcoord9.xyz - temp_output_2_0_g7 );
+				#endif
+				float3 normalizeResult383 = normalize( ( _DissolveDirection + float3( 0,0.001,0 ) ) );
+				float3 break5_g8 = radians( _DissolveDirection );
+				float temp_output_6_0_g8 = sin( break5_g8.x );
+				float temp_output_13_0_g8 = sin( break5_g8.y );
+				float temp_output_19_0_g8 = cos( break5_g8.z );
+				float temp_output_11_0_g8 = cos( break5_g8.x );
+				float temp_output_21_0_g8 = sin( break5_g8.z );
+				float3 appendResult10_g8 = (float3(( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_19_0_g8 ) - ( temp_output_11_0_g8 * temp_output_21_0_g8 ) ) , ( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_21_0_g8 ) + ( temp_output_11_0_g8 * temp_output_19_0_g8 ) ) , ( temp_output_6_0_g8 * cos( break5_g8.y ) )));
+				#ifdef BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
+				float3 staticSwitch378 = appendResult10_g8;
+				#else
+				float3 staticSwitch378 = normalizeResult383;
+				#endif
+				float dotResult10_g7 = dot( staticSwitch7_g7 , staticSwitch378 );
+				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
+				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
+				float lerpResult9_g6 = lerp( 0.0 , ( 1.0 + temp_output_2_0_g6 ) , temp_output_1_0_g6);
+				#ifdef _ALPHATEST_ON
+				float4 staticSwitch388 = ( ( ( temp_output_7_0_g6 - step( lerpResult9_g6 , temp_output_3_0_g6 ) ) * _EdgeColor ) * _EdgeColorIntensity );
+				#else
+				float4 staticSwitch388 = float4( Emissive104 , 0.0 );
+				#endif
 				
-				TEXTURE2D(tex244) = _MetallicGlossMap;
+				sampler2D tex244 = _MetallicGlossMap;
 				SamplerState ss244 = sampler_MetallicGlossMap;
 				half2 uv244 = staticSwitch297;
 				float BaseAlpha175 = tex2DNode10.a;
@@ -778,22 +893,29 @@ Shader "Universal Render Pipeline/Lit Outline"
 				
 				float Smoothness116 = (localSampleMetallicSpecGloss244).w;
 				
-				float3 temp_cast_0 = (SAMPLE_TEXTURE2D( _OcclusionMap, sampler_OcclusionMap, staticSwitch297 ).g).xxx;
+				float3 temp_cast_2 = (tex2D( _OcclusionMap, staticSwitch297 ).g).xxx;
 				float temp_output_2_0_g2 = _OcclusionStrength;
 				float temp_output_3_0_g2 = ( 1.0 - temp_output_2_0_g2 );
 				float3 appendResult7_g2 = (float3(temp_output_3_0_g2 , temp_output_3_0_g2 , temp_output_3_0_g2));
-				float AO81 = (( ( temp_cast_0 * temp_output_2_0_g2 ) + appendResult7_g2 )).x;
+				float AO81 = (( ( temp_cast_2 * temp_output_2_0_g2 ) + appendResult7_g2 )).x;
+				
+				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
+				#ifdef _ALPHATEST_ON
+				float staticSwitch333 = ( temp_output_10_0_g5 + 0.0001 );
+				#else
+				float staticSwitch333 = 0.0;
+				#endif
 				
 
 				float3 BaseColor = (BaseMap89).rgb;
 				float3 Normal = Normal77;
-				float3 Emission = Emissive104;
+				float3 Emission = staticSwitch388.rgb;
 				float3 Specular = 0.5;
 				float Metallic = Metallic79;
 				float Smoothness = Smoothness116;
 				float Occlusion = AO81;
 				float Alpha = (BaseMap89).a;
-				float AlphaClipThreshold = _Cutoff;
+				float AlphaClipThreshold = staticSwitch333;
 				float AlphaClipThresholdShadow = 0.5;
 				float3 BakedGI = 0;
 				float3 RefractionColor = 1;
@@ -1044,7 +1166,6 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#define ASE_FOG 1
 			#pragma shader_feature_local_fragment _ALPHATEST_ON
 			#define ASE_SRP_VERSION 140008
-			#define ASE_USING_SAMPLING_MACROS 1
 
 
 			#pragma vertex vert
@@ -1071,6 +1192,10 @@ Shader "Universal Render Pipeline/Lit Outline"
 
 			#define ASE_NEEDS_VERT_NORMAL
 			#define ASE_NEEDS_FRAG_WORLD_POSITION
+			#define ASE_NEEDS_FRAG_POSITION
+			#pragma shader_feature_local BOOLEAN_USE_WROLDSPACE_ON
+			#pragma shader_feature_local BOOLEAN_WORLDORIGIN_ON
+			#pragma shader_feature_local BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
 
 
 			#if defined(ASE_EARLY_Z_DEPTH_OPTIMIZE) && (SHADER_TARGET >= 45)
@@ -1104,6 +1229,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float4 ase_texcoord4 : TEXCOORD4;
 				float4 ase_texcoord5 : TEXCOORD5;
 				float4 ase_texcoord6 : TEXCOORD6;
+				float4 ase_texcoord7 : TEXCOORD7;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 				UNITY_VERTEX_OUTPUT_STEREO
 			};
@@ -1111,15 +1237,22 @@ Shader "Universal Render Pipeline/Lit Outline"
 			CBUFFER_START(UnityPerMaterial)
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
 			float4 _EmissionColor;
-			float _SmoothnessTextureChannel;
-			float _AlphaClip;
-			float _Parallax;
-			float _BumpScale;
+			float3 _DissolveDirection;
+			float3 _DissolveOffset;
+			float2 _NoiseUVSpeed;
 			float _Metallic;
+			float _EdgeColorIntensity;
+			float _DirectionEdgeWidthScale;
+			float _SmoothnessTextureChannel;
 			float _Smoothness;
+			float _EdgeWidth;
+			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
-			float _Cutoff;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -1152,10 +1285,8 @@ Shader "Universal Render Pipeline/Lit Outline"
 				int _PassValue;
 			#endif
 
-			TEXTURE2D(_BaseMap);
-			TEXTURE2D(_ParallaxMap);
-			SAMPLER(sampler_ParallaxMap);
-			SAMPLER(sampler_BaseMap);
+			sampler2D _BaseMap;
+			sampler2D _ParallaxMap;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"
@@ -1171,6 +1302,48 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float3 v = normalize( viewDir );
 				v.z += 0.42;
 				return h* (v.xy / v.z);
+			}
+			
+			inline float noise_randomValue (float2 uv) { return frac(sin(dot(uv, float2(12.9898, 78.233)))*43758.5453); }
+			inline float noise_interpolate (float a, float b, float t) { return (1.0-t)*a + (t*b); }
+			inline float valueNoise (float2 uv)
+			{
+				float2 i = floor(uv);
+				float2 f = frac( uv );
+				f = f* f * (3.0 - 2.0 * f);
+				uv = abs( frac(uv) - 0.5);
+				float2 c0 = i + float2( 0.0, 0.0 );
+				float2 c1 = i + float2( 1.0, 0.0 );
+				float2 c2 = i + float2( 0.0, 1.0 );
+				float2 c3 = i + float2( 1.0, 1.0 );
+				float r0 = noise_randomValue( c0 );
+				float r1 = noise_randomValue( c1 );
+				float r2 = noise_randomValue( c2 );
+				float r3 = noise_randomValue( c3 );
+				float bottomOfGrid = noise_interpolate( r0, r1, f.x );
+				float topOfGrid = noise_interpolate( r2, r3, f.x );
+				float t = noise_interpolate( bottomOfGrid, topOfGrid, f.y );
+				return t;
+			}
+			
+			float SimpleNoise(float2 UV)
+			{
+				float t = 0.0;
+				float freq = pow( 2.0, float( 0 ) );
+				float amp = pow( 0.5, float( 3 - 0 ) );
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(1));
+				amp = pow(0.5, float(3-1));
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(2));
+				amp = pow(0.5, float(3-2));
+				t += valueNoise( UV/freq )*amp;
+				return t;
+			}
+			
+			float3 ObjectPosition19_g7(  )
+			{
+				return GetAbsolutePositionWS(UNITY_MATRIX_M._m03_m13_m23);
 			}
 			
 
@@ -1193,6 +1366,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				o.ase_texcoord6.xyz = ase_worldBitangent;
 				
 				o.ase_texcoord3.xy = v.ase_texcoord.xy;
+				o.ase_texcoord7 = v.vertex;
 				
 				//setting value to unused interpolator channels and avoid initialization warnings
 				o.ase_texcoord3.zw = 0;
@@ -1368,18 +1542,59 @@ Shader "Universal Render Pipeline/Lit Outline"
 				ase_worldViewDir = normalize(ase_worldViewDir);
 				float3 ase_tanViewDir =  tanToWorld0 * ase_worldViewDir.x + tanToWorld1 * ase_worldViewDir.y  + tanToWorld2 * ase_worldViewDir.z;
 				ase_tanViewDir = normalize(ase_tanViewDir);
-				float2 paralaxOffset282 = ParallaxOffset( SAMPLE_TEXTURE2D( _ParallaxMap, sampler_ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
+				float2 paralaxOffset282 = ParallaxOffset( tex2D( _ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
 				#ifdef _PARALLAXMAP
 				float2 staticSwitch297 = ( uv_BaseMap + paralaxOffset282 );
 				#else
 				float2 staticSwitch297 = uv_BaseMap;
 				#endif
-				float4 tex2DNode10 = SAMPLE_TEXTURE2D( _BaseMap, sampler_BaseMap, staticSwitch297 );
+				float4 tex2DNode10 = tex2D( _BaseMap, staticSwitch297 );
 				float4 BaseMap89 = ( tex2DNode10 * _BaseColor );
+				
+				float temp_output_2_0_g6 = _EdgeWidth;
+				float temp_output_1_0_g6 = 0.5;
+				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
+				float2 texCoord384 = IN.ase_texcoord3.xy * float2( 1,1 ) + float2( 0,0 );
+				float simpleNoise372 = SimpleNoise( ( texCoord384 + ( _NoiseUVSpeed * ( _TimeParameters.x * 0.005 ) ) )*_NoiseScale );
+				float3 temp_output_2_0_g7 = _DissolveOffset;
+				float3 objToWorld12_g7 = mul( GetObjectToWorldMatrix(), float4( IN.ase_texcoord7.xyz, 1 ) ).xyz;
+				float3 localObjectPosition19_g7 = ObjectPosition19_g7();
+				#ifdef BOOLEAN_WORLDORIGIN_ON
+				float3 staticSwitch15_g7 = temp_output_2_0_g7;
+				#else
+				float3 staticSwitch15_g7 = ( localObjectPosition19_g7 + temp_output_2_0_g7 );
+				#endif
+				#ifdef BOOLEAN_USE_WROLDSPACE_ON
+				float3 staticSwitch7_g7 = ( objToWorld12_g7 - staticSwitch15_g7 );
+				#else
+				float3 staticSwitch7_g7 = ( IN.ase_texcoord7.xyz - temp_output_2_0_g7 );
+				#endif
+				float3 normalizeResult383 = normalize( ( _DissolveDirection + float3( 0,0.001,0 ) ) );
+				float3 break5_g8 = radians( _DissolveDirection );
+				float temp_output_6_0_g8 = sin( break5_g8.x );
+				float temp_output_13_0_g8 = sin( break5_g8.y );
+				float temp_output_19_0_g8 = cos( break5_g8.z );
+				float temp_output_11_0_g8 = cos( break5_g8.x );
+				float temp_output_21_0_g8 = sin( break5_g8.z );
+				float3 appendResult10_g8 = (float3(( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_19_0_g8 ) - ( temp_output_11_0_g8 * temp_output_21_0_g8 ) ) , ( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_21_0_g8 ) + ( temp_output_11_0_g8 * temp_output_19_0_g8 ) ) , ( temp_output_6_0_g8 * cos( break5_g8.y ) )));
+				#ifdef BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
+				float3 staticSwitch378 = appendResult10_g8;
+				#else
+				float3 staticSwitch378 = normalizeResult383;
+				#endif
+				float dotResult10_g7 = dot( staticSwitch7_g7 , staticSwitch378 );
+				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
+				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
+				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
+				#ifdef _ALPHATEST_ON
+				float staticSwitch333 = ( temp_output_10_0_g5 + 0.0001 );
+				#else
+				float staticSwitch333 = 0.0;
+				#endif
 				
 
 				float Alpha = (BaseMap89).a;
-				float AlphaClipThreshold = _Cutoff;
+				float AlphaClipThreshold = staticSwitch333;
 				float AlphaClipThresholdShadow = 0.5;
 
 				#ifdef ASE_DEPTH_WRITE_ON
@@ -1426,7 +1641,6 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#define ASE_FOG 1
 			#pragma shader_feature_local_fragment _ALPHATEST_ON
 			#define ASE_SRP_VERSION 140008
-			#define ASE_USING_SAMPLING_MACROS 1
 
 
 			#pragma vertex vert
@@ -1450,6 +1664,10 @@ Shader "Universal Render Pipeline/Lit Outline"
 
 			#define ASE_NEEDS_VERT_NORMAL
 			#define ASE_NEEDS_FRAG_WORLD_POSITION
+			#define ASE_NEEDS_FRAG_POSITION
+			#pragma shader_feature_local BOOLEAN_USE_WROLDSPACE_ON
+			#pragma shader_feature_local BOOLEAN_WORLDORIGIN_ON
+			#pragma shader_feature_local BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
 
 
 			#if defined(ASE_EARLY_Z_DEPTH_OPTIMIZE) && (SHADER_TARGET >= 45)
@@ -1483,6 +1701,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float4 ase_texcoord4 : TEXCOORD4;
 				float4 ase_texcoord5 : TEXCOORD5;
 				float4 ase_texcoord6 : TEXCOORD6;
+				float4 ase_texcoord7 : TEXCOORD7;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 				UNITY_VERTEX_OUTPUT_STEREO
 			};
@@ -1490,15 +1709,22 @@ Shader "Universal Render Pipeline/Lit Outline"
 			CBUFFER_START(UnityPerMaterial)
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
 			float4 _EmissionColor;
-			float _SmoothnessTextureChannel;
-			float _AlphaClip;
-			float _Parallax;
-			float _BumpScale;
+			float3 _DissolveDirection;
+			float3 _DissolveOffset;
+			float2 _NoiseUVSpeed;
 			float _Metallic;
+			float _EdgeColorIntensity;
+			float _DirectionEdgeWidthScale;
+			float _SmoothnessTextureChannel;
 			float _Smoothness;
+			float _EdgeWidth;
+			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
-			float _Cutoff;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -1531,10 +1757,8 @@ Shader "Universal Render Pipeline/Lit Outline"
 				int _PassValue;
 			#endif
 
-			TEXTURE2D(_BaseMap);
-			TEXTURE2D(_ParallaxMap);
-			SAMPLER(sampler_ParallaxMap);
-			SAMPLER(sampler_BaseMap);
+			sampler2D _BaseMap;
+			sampler2D _ParallaxMap;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"
@@ -1550,6 +1774,48 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float3 v = normalize( viewDir );
 				v.z += 0.42;
 				return h* (v.xy / v.z);
+			}
+			
+			inline float noise_randomValue (float2 uv) { return frac(sin(dot(uv, float2(12.9898, 78.233)))*43758.5453); }
+			inline float noise_interpolate (float a, float b, float t) { return (1.0-t)*a + (t*b); }
+			inline float valueNoise (float2 uv)
+			{
+				float2 i = floor(uv);
+				float2 f = frac( uv );
+				f = f* f * (3.0 - 2.0 * f);
+				uv = abs( frac(uv) - 0.5);
+				float2 c0 = i + float2( 0.0, 0.0 );
+				float2 c1 = i + float2( 1.0, 0.0 );
+				float2 c2 = i + float2( 0.0, 1.0 );
+				float2 c3 = i + float2( 1.0, 1.0 );
+				float r0 = noise_randomValue( c0 );
+				float r1 = noise_randomValue( c1 );
+				float r2 = noise_randomValue( c2 );
+				float r3 = noise_randomValue( c3 );
+				float bottomOfGrid = noise_interpolate( r0, r1, f.x );
+				float topOfGrid = noise_interpolate( r2, r3, f.x );
+				float t = noise_interpolate( bottomOfGrid, topOfGrid, f.y );
+				return t;
+			}
+			
+			float SimpleNoise(float2 UV)
+			{
+				float t = 0.0;
+				float freq = pow( 2.0, float( 0 ) );
+				float amp = pow( 0.5, float( 3 - 0 ) );
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(1));
+				amp = pow(0.5, float(3-1));
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(2));
+				amp = pow(0.5, float(3-2));
+				t += valueNoise( UV/freq )*amp;
+				return t;
+			}
+			
+			float3 ObjectPosition19_g7(  )
+			{
+				return GetAbsolutePositionWS(UNITY_MATRIX_M._m03_m13_m23);
 			}
 			
 
@@ -1569,6 +1835,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				o.ase_texcoord6.xyz = ase_worldBitangent;
 				
 				o.ase_texcoord3.xy = v.ase_texcoord.xy;
+				o.ase_texcoord7 = v.vertex;
 				
 				//setting value to unused interpolator channels and avoid initialization warnings
 				o.ase_texcoord3.zw = 0;
@@ -1729,18 +1996,59 @@ Shader "Universal Render Pipeline/Lit Outline"
 				ase_worldViewDir = normalize(ase_worldViewDir);
 				float3 ase_tanViewDir =  tanToWorld0 * ase_worldViewDir.x + tanToWorld1 * ase_worldViewDir.y  + tanToWorld2 * ase_worldViewDir.z;
 				ase_tanViewDir = normalize(ase_tanViewDir);
-				float2 paralaxOffset282 = ParallaxOffset( SAMPLE_TEXTURE2D( _ParallaxMap, sampler_ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
+				float2 paralaxOffset282 = ParallaxOffset( tex2D( _ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
 				#ifdef _PARALLAXMAP
 				float2 staticSwitch297 = ( uv_BaseMap + paralaxOffset282 );
 				#else
 				float2 staticSwitch297 = uv_BaseMap;
 				#endif
-				float4 tex2DNode10 = SAMPLE_TEXTURE2D( _BaseMap, sampler_BaseMap, staticSwitch297 );
+				float4 tex2DNode10 = tex2D( _BaseMap, staticSwitch297 );
 				float4 BaseMap89 = ( tex2DNode10 * _BaseColor );
+				
+				float temp_output_2_0_g6 = _EdgeWidth;
+				float temp_output_1_0_g6 = 0.5;
+				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
+				float2 texCoord384 = IN.ase_texcoord3.xy * float2( 1,1 ) + float2( 0,0 );
+				float simpleNoise372 = SimpleNoise( ( texCoord384 + ( _NoiseUVSpeed * ( _TimeParameters.x * 0.005 ) ) )*_NoiseScale );
+				float3 temp_output_2_0_g7 = _DissolveOffset;
+				float3 objToWorld12_g7 = mul( GetObjectToWorldMatrix(), float4( IN.ase_texcoord7.xyz, 1 ) ).xyz;
+				float3 localObjectPosition19_g7 = ObjectPosition19_g7();
+				#ifdef BOOLEAN_WORLDORIGIN_ON
+				float3 staticSwitch15_g7 = temp_output_2_0_g7;
+				#else
+				float3 staticSwitch15_g7 = ( localObjectPosition19_g7 + temp_output_2_0_g7 );
+				#endif
+				#ifdef BOOLEAN_USE_WROLDSPACE_ON
+				float3 staticSwitch7_g7 = ( objToWorld12_g7 - staticSwitch15_g7 );
+				#else
+				float3 staticSwitch7_g7 = ( IN.ase_texcoord7.xyz - temp_output_2_0_g7 );
+				#endif
+				float3 normalizeResult383 = normalize( ( _DissolveDirection + float3( 0,0.001,0 ) ) );
+				float3 break5_g8 = radians( _DissolveDirection );
+				float temp_output_6_0_g8 = sin( break5_g8.x );
+				float temp_output_13_0_g8 = sin( break5_g8.y );
+				float temp_output_19_0_g8 = cos( break5_g8.z );
+				float temp_output_11_0_g8 = cos( break5_g8.x );
+				float temp_output_21_0_g8 = sin( break5_g8.z );
+				float3 appendResult10_g8 = (float3(( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_19_0_g8 ) - ( temp_output_11_0_g8 * temp_output_21_0_g8 ) ) , ( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_21_0_g8 ) + ( temp_output_11_0_g8 * temp_output_19_0_g8 ) ) , ( temp_output_6_0_g8 * cos( break5_g8.y ) )));
+				#ifdef BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
+				float3 staticSwitch378 = appendResult10_g8;
+				#else
+				float3 staticSwitch378 = normalizeResult383;
+				#endif
+				float dotResult10_g7 = dot( staticSwitch7_g7 , staticSwitch378 );
+				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
+				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
+				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
+				#ifdef _ALPHATEST_ON
+				float staticSwitch333 = ( temp_output_10_0_g5 + 0.0001 );
+				#else
+				float staticSwitch333 = 0.0;
+				#endif
 				
 
 				float Alpha = (BaseMap89).a;
-				float AlphaClipThreshold = _Cutoff;
+				float AlphaClipThreshold = staticSwitch333;
 				#ifdef ASE_DEPTH_WRITE_ON
 					float DepthValue = IN.clipPos.z;
 				#endif
@@ -1778,7 +2086,6 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#pragma shader_feature_local_fragment _EMISSION
 			#pragma shader_feature_local_fragment _ALPHATEST_ON
 			#define ASE_SRP_VERSION 140008
-			#define ASE_USING_SAMPLING_MACROS 1
 
 
 			#pragma vertex vert
@@ -1802,6 +2109,10 @@ Shader "Universal Render Pipeline/Lit Outline"
 
 			#define ASE_NEEDS_VERT_NORMAL
 			#define ASE_NEEDS_FRAG_WORLD_POSITION
+			#define ASE_NEEDS_FRAG_POSITION
+			#pragma shader_feature_local BOOLEAN_USE_WROLDSPACE_ON
+			#pragma shader_feature_local BOOLEAN_WORLDORIGIN_ON
+			#pragma shader_feature_local BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
 
 
 			struct VertexInput
@@ -1832,6 +2143,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float4 ase_texcoord5 : TEXCOORD5;
 				float4 ase_texcoord6 : TEXCOORD6;
 				float4 ase_texcoord7 : TEXCOORD7;
+				float4 ase_texcoord8 : TEXCOORD8;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 				UNITY_VERTEX_OUTPUT_STEREO
 			};
@@ -1839,15 +2151,22 @@ Shader "Universal Render Pipeline/Lit Outline"
 			CBUFFER_START(UnityPerMaterial)
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
 			float4 _EmissionColor;
-			float _SmoothnessTextureChannel;
-			float _AlphaClip;
-			float _Parallax;
-			float _BumpScale;
+			float3 _DissolveDirection;
+			float3 _DissolveOffset;
+			float2 _NoiseUVSpeed;
 			float _Metallic;
+			float _EdgeColorIntensity;
+			float _DirectionEdgeWidthScale;
+			float _SmoothnessTextureChannel;
 			float _Smoothness;
+			float _EdgeWidth;
+			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
-			float _Cutoff;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -1880,12 +2199,9 @@ Shader "Universal Render Pipeline/Lit Outline"
 				int _PassValue;
 			#endif
 
-			TEXTURE2D(_BaseMap);
-			TEXTURE2D(_ParallaxMap);
-			SAMPLER(sampler_ParallaxMap);
-			SAMPLER(sampler_BaseMap);
-			TEXTURE2D(_EmissionMap);
-			SAMPLER(sampler_EmissionMap);
+			sampler2D _BaseMap;
+			sampler2D _ParallaxMap;
+			sampler2D _EmissionMap;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"
@@ -1901,6 +2217,48 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float3 v = normalize( viewDir );
 				v.z += 0.42;
 				return h* (v.xy / v.z);
+			}
+			
+			inline float noise_randomValue (float2 uv) { return frac(sin(dot(uv, float2(12.9898, 78.233)))*43758.5453); }
+			inline float noise_interpolate (float a, float b, float t) { return (1.0-t)*a + (t*b); }
+			inline float valueNoise (float2 uv)
+			{
+				float2 i = floor(uv);
+				float2 f = frac( uv );
+				f = f* f * (3.0 - 2.0 * f);
+				uv = abs( frac(uv) - 0.5);
+				float2 c0 = i + float2( 0.0, 0.0 );
+				float2 c1 = i + float2( 1.0, 0.0 );
+				float2 c2 = i + float2( 0.0, 1.0 );
+				float2 c3 = i + float2( 1.0, 1.0 );
+				float r0 = noise_randomValue( c0 );
+				float r1 = noise_randomValue( c1 );
+				float r2 = noise_randomValue( c2 );
+				float r3 = noise_randomValue( c3 );
+				float bottomOfGrid = noise_interpolate( r0, r1, f.x );
+				float topOfGrid = noise_interpolate( r2, r3, f.x );
+				float t = noise_interpolate( bottomOfGrid, topOfGrid, f.y );
+				return t;
+			}
+			
+			float SimpleNoise(float2 UV)
+			{
+				float t = 0.0;
+				float freq = pow( 2.0, float( 0 ) );
+				float amp = pow( 0.5, float( 3 - 0 ) );
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(1));
+				amp = pow(0.5, float(3-1));
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(2));
+				amp = pow(0.5, float(3-2));
+				t += valueNoise( UV/freq )*amp;
+				return t;
+			}
+			
+			float3 ObjectPosition19_g7(  )
+			{
+				return GetAbsolutePositionWS(UNITY_MATRIX_M._m03_m13_m23);
 			}
 			
 
@@ -1920,6 +2278,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				o.ase_texcoord7.xyz = ase_worldBitangent;
 				
 				o.ase_texcoord4.xy = v.texcoord0.xy;
+				o.ase_texcoord8 = v.vertex;
 				
 				//setting value to unused interpolator channels and avoid initialization warnings
 				o.ase_texcoord4.zw = 0;
@@ -2088,27 +2447,74 @@ Shader "Universal Render Pipeline/Lit Outline"
 				ase_worldViewDir = normalize(ase_worldViewDir);
 				float3 ase_tanViewDir =  tanToWorld0 * ase_worldViewDir.x + tanToWorld1 * ase_worldViewDir.y  + tanToWorld2 * ase_worldViewDir.z;
 				ase_tanViewDir = normalize(ase_tanViewDir);
-				float2 paralaxOffset282 = ParallaxOffset( SAMPLE_TEXTURE2D( _ParallaxMap, sampler_ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
+				float2 paralaxOffset282 = ParallaxOffset( tex2D( _ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
 				#ifdef _PARALLAXMAP
 				float2 staticSwitch297 = ( uv_BaseMap + paralaxOffset282 );
 				#else
 				float2 staticSwitch297 = uv_BaseMap;
 				#endif
-				float4 tex2DNode10 = SAMPLE_TEXTURE2D( _BaseMap, sampler_BaseMap, staticSwitch297 );
+				float4 tex2DNode10 = tex2D( _BaseMap, staticSwitch297 );
 				float4 BaseMap89 = ( tex2DNode10 * _BaseColor );
 				
 				#ifdef _EMISSION
-				float3 staticSwitch182 = ( (_EmissionColor).rgb * (SAMPLE_TEXTURE2D( _EmissionMap, sampler_EmissionMap, staticSwitch297 )).rgb );
+				float3 staticSwitch182 = ( (_EmissionColor).rgb * (tex2D( _EmissionMap, staticSwitch297 )).rgb );
 				#else
 				float3 staticSwitch182 = float3(0,0,0);
 				#endif
 				float3 Emissive104 = staticSwitch182;
+				float temp_output_2_0_g6 = _EdgeWidth;
+				float temp_output_1_0_g6 = 0.5;
+				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
+				float2 texCoord384 = IN.ase_texcoord4.xy * float2( 1,1 ) + float2( 0,0 );
+				float simpleNoise372 = SimpleNoise( ( texCoord384 + ( _NoiseUVSpeed * ( _TimeParameters.x * 0.005 ) ) )*_NoiseScale );
+				float3 temp_output_2_0_g7 = _DissolveOffset;
+				float3 objToWorld12_g7 = mul( GetObjectToWorldMatrix(), float4( IN.ase_texcoord8.xyz, 1 ) ).xyz;
+				float3 localObjectPosition19_g7 = ObjectPosition19_g7();
+				#ifdef BOOLEAN_WORLDORIGIN_ON
+				float3 staticSwitch15_g7 = temp_output_2_0_g7;
+				#else
+				float3 staticSwitch15_g7 = ( localObjectPosition19_g7 + temp_output_2_0_g7 );
+				#endif
+				#ifdef BOOLEAN_USE_WROLDSPACE_ON
+				float3 staticSwitch7_g7 = ( objToWorld12_g7 - staticSwitch15_g7 );
+				#else
+				float3 staticSwitch7_g7 = ( IN.ase_texcoord8.xyz - temp_output_2_0_g7 );
+				#endif
+				float3 normalizeResult383 = normalize( ( _DissolveDirection + float3( 0,0.001,0 ) ) );
+				float3 break5_g8 = radians( _DissolveDirection );
+				float temp_output_6_0_g8 = sin( break5_g8.x );
+				float temp_output_13_0_g8 = sin( break5_g8.y );
+				float temp_output_19_0_g8 = cos( break5_g8.z );
+				float temp_output_11_0_g8 = cos( break5_g8.x );
+				float temp_output_21_0_g8 = sin( break5_g8.z );
+				float3 appendResult10_g8 = (float3(( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_19_0_g8 ) - ( temp_output_11_0_g8 * temp_output_21_0_g8 ) ) , ( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_21_0_g8 ) + ( temp_output_11_0_g8 * temp_output_19_0_g8 ) ) , ( temp_output_6_0_g8 * cos( break5_g8.y ) )));
+				#ifdef BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
+				float3 staticSwitch378 = appendResult10_g8;
+				#else
+				float3 staticSwitch378 = normalizeResult383;
+				#endif
+				float dotResult10_g7 = dot( staticSwitch7_g7 , staticSwitch378 );
+				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
+				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
+				float lerpResult9_g6 = lerp( 0.0 , ( 1.0 + temp_output_2_0_g6 ) , temp_output_1_0_g6);
+				#ifdef _ALPHATEST_ON
+				float4 staticSwitch388 = ( ( ( temp_output_7_0_g6 - step( lerpResult9_g6 , temp_output_3_0_g6 ) ) * _EdgeColor ) * _EdgeColorIntensity );
+				#else
+				float4 staticSwitch388 = float4( Emissive104 , 0.0 );
+				#endif
+				
+				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
+				#ifdef _ALPHATEST_ON
+				float staticSwitch333 = ( temp_output_10_0_g5 + 0.0001 );
+				#else
+				float staticSwitch333 = 0.0;
+				#endif
 				
 
 				float3 BaseColor = (BaseMap89).rgb;
-				float3 Emission = Emissive104;
+				float3 Emission = staticSwitch388.rgb;
 				float Alpha = (BaseMap89).a;
-				float AlphaClipThreshold = _Cutoff;
+				float AlphaClipThreshold = staticSwitch333;
 
 				#ifdef _ALPHATEST_ON
 					clip(Alpha - AlphaClipThreshold);
@@ -2146,7 +2552,6 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#define ASE_FOG 1
 			#pragma shader_feature_local_fragment _ALPHATEST_ON
 			#define ASE_SRP_VERSION 140008
-			#define ASE_USING_SAMPLING_MACROS 1
 
 
 			#pragma vertex vert
@@ -2165,6 +2570,10 @@ Shader "Universal Render Pipeline/Lit Outline"
 
 			#define ASE_NEEDS_VERT_NORMAL
 			#define ASE_NEEDS_FRAG_WORLD_POSITION
+			#define ASE_NEEDS_FRAG_POSITION
+			#pragma shader_feature_local BOOLEAN_USE_WROLDSPACE_ON
+			#pragma shader_feature_local BOOLEAN_WORLDORIGIN_ON
+			#pragma shader_feature_local BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
 
 
 			struct VertexInput
@@ -2189,6 +2598,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float4 ase_texcoord3 : TEXCOORD3;
 				float4 ase_texcoord4 : TEXCOORD4;
 				float4 ase_texcoord5 : TEXCOORD5;
+				float4 ase_texcoord6 : TEXCOORD6;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 				UNITY_VERTEX_OUTPUT_STEREO
 			};
@@ -2196,15 +2606,22 @@ Shader "Universal Render Pipeline/Lit Outline"
 			CBUFFER_START(UnityPerMaterial)
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
 			float4 _EmissionColor;
-			float _SmoothnessTextureChannel;
-			float _AlphaClip;
-			float _Parallax;
-			float _BumpScale;
+			float3 _DissolveDirection;
+			float3 _DissolveOffset;
+			float2 _NoiseUVSpeed;
 			float _Metallic;
+			float _EdgeColorIntensity;
+			float _DirectionEdgeWidthScale;
+			float _SmoothnessTextureChannel;
 			float _Smoothness;
+			float _EdgeWidth;
+			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
-			float _Cutoff;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -2237,10 +2654,8 @@ Shader "Universal Render Pipeline/Lit Outline"
 				int _PassValue;
 			#endif
 
-			TEXTURE2D(_BaseMap);
-			TEXTURE2D(_ParallaxMap);
-			SAMPLER(sampler_ParallaxMap);
-			SAMPLER(sampler_BaseMap);
+			sampler2D _BaseMap;
+			sampler2D _ParallaxMap;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"
@@ -2256,6 +2671,48 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float3 v = normalize( viewDir );
 				v.z += 0.42;
 				return h* (v.xy / v.z);
+			}
+			
+			inline float noise_randomValue (float2 uv) { return frac(sin(dot(uv, float2(12.9898, 78.233)))*43758.5453); }
+			inline float noise_interpolate (float a, float b, float t) { return (1.0-t)*a + (t*b); }
+			inline float valueNoise (float2 uv)
+			{
+				float2 i = floor(uv);
+				float2 f = frac( uv );
+				f = f* f * (3.0 - 2.0 * f);
+				uv = abs( frac(uv) - 0.5);
+				float2 c0 = i + float2( 0.0, 0.0 );
+				float2 c1 = i + float2( 1.0, 0.0 );
+				float2 c2 = i + float2( 0.0, 1.0 );
+				float2 c3 = i + float2( 1.0, 1.0 );
+				float r0 = noise_randomValue( c0 );
+				float r1 = noise_randomValue( c1 );
+				float r2 = noise_randomValue( c2 );
+				float r3 = noise_randomValue( c3 );
+				float bottomOfGrid = noise_interpolate( r0, r1, f.x );
+				float topOfGrid = noise_interpolate( r2, r3, f.x );
+				float t = noise_interpolate( bottomOfGrid, topOfGrid, f.y );
+				return t;
+			}
+			
+			float SimpleNoise(float2 UV)
+			{
+				float t = 0.0;
+				float freq = pow( 2.0, float( 0 ) );
+				float amp = pow( 0.5, float( 3 - 0 ) );
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(1));
+				amp = pow(0.5, float(3-1));
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(2));
+				amp = pow(0.5, float(3-2));
+				t += valueNoise( UV/freq )*amp;
+				return t;
+			}
+			
+			float3 ObjectPosition19_g7(  )
+			{
+				return GetAbsolutePositionWS(UNITY_MATRIX_M._m03_m13_m23);
 			}
 			
 
@@ -2275,6 +2732,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				o.ase_texcoord5.xyz = ase_worldBitangent;
 				
 				o.ase_texcoord2.xy = v.ase_texcoord.xy;
+				o.ase_texcoord6 = v.vertex;
 				
 				//setting value to unused interpolator channels and avoid initialization warnings
 				o.ase_texcoord2.zw = 0;
@@ -2430,19 +2888,60 @@ Shader "Universal Render Pipeline/Lit Outline"
 				ase_worldViewDir = normalize(ase_worldViewDir);
 				float3 ase_tanViewDir =  tanToWorld0 * ase_worldViewDir.x + tanToWorld1 * ase_worldViewDir.y  + tanToWorld2 * ase_worldViewDir.z;
 				ase_tanViewDir = normalize(ase_tanViewDir);
-				float2 paralaxOffset282 = ParallaxOffset( SAMPLE_TEXTURE2D( _ParallaxMap, sampler_ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
+				float2 paralaxOffset282 = ParallaxOffset( tex2D( _ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
 				#ifdef _PARALLAXMAP
 				float2 staticSwitch297 = ( uv_BaseMap + paralaxOffset282 );
 				#else
 				float2 staticSwitch297 = uv_BaseMap;
 				#endif
-				float4 tex2DNode10 = SAMPLE_TEXTURE2D( _BaseMap, sampler_BaseMap, staticSwitch297 );
+				float4 tex2DNode10 = tex2D( _BaseMap, staticSwitch297 );
 				float4 BaseMap89 = ( tex2DNode10 * _BaseColor );
+				
+				float temp_output_2_0_g6 = _EdgeWidth;
+				float temp_output_1_0_g6 = 0.5;
+				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
+				float2 texCoord384 = IN.ase_texcoord2.xy * float2( 1,1 ) + float2( 0,0 );
+				float simpleNoise372 = SimpleNoise( ( texCoord384 + ( _NoiseUVSpeed * ( _TimeParameters.x * 0.005 ) ) )*_NoiseScale );
+				float3 temp_output_2_0_g7 = _DissolveOffset;
+				float3 objToWorld12_g7 = mul( GetObjectToWorldMatrix(), float4( IN.ase_texcoord6.xyz, 1 ) ).xyz;
+				float3 localObjectPosition19_g7 = ObjectPosition19_g7();
+				#ifdef BOOLEAN_WORLDORIGIN_ON
+				float3 staticSwitch15_g7 = temp_output_2_0_g7;
+				#else
+				float3 staticSwitch15_g7 = ( localObjectPosition19_g7 + temp_output_2_0_g7 );
+				#endif
+				#ifdef BOOLEAN_USE_WROLDSPACE_ON
+				float3 staticSwitch7_g7 = ( objToWorld12_g7 - staticSwitch15_g7 );
+				#else
+				float3 staticSwitch7_g7 = ( IN.ase_texcoord6.xyz - temp_output_2_0_g7 );
+				#endif
+				float3 normalizeResult383 = normalize( ( _DissolveDirection + float3( 0,0.001,0 ) ) );
+				float3 break5_g8 = radians( _DissolveDirection );
+				float temp_output_6_0_g8 = sin( break5_g8.x );
+				float temp_output_13_0_g8 = sin( break5_g8.y );
+				float temp_output_19_0_g8 = cos( break5_g8.z );
+				float temp_output_11_0_g8 = cos( break5_g8.x );
+				float temp_output_21_0_g8 = sin( break5_g8.z );
+				float3 appendResult10_g8 = (float3(( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_19_0_g8 ) - ( temp_output_11_0_g8 * temp_output_21_0_g8 ) ) , ( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_21_0_g8 ) + ( temp_output_11_0_g8 * temp_output_19_0_g8 ) ) , ( temp_output_6_0_g8 * cos( break5_g8.y ) )));
+				#ifdef BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
+				float3 staticSwitch378 = appendResult10_g8;
+				#else
+				float3 staticSwitch378 = normalizeResult383;
+				#endif
+				float dotResult10_g7 = dot( staticSwitch7_g7 , staticSwitch378 );
+				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
+				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
+				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
+				#ifdef _ALPHATEST_ON
+				float staticSwitch333 = ( temp_output_10_0_g5 + 0.0001 );
+				#else
+				float staticSwitch333 = 0.0;
+				#endif
 				
 
 				float3 BaseColor = (BaseMap89).rgb;
 				float Alpha = (BaseMap89).a;
-				float AlphaClipThreshold = _Cutoff;
+				float AlphaClipThreshold = staticSwitch333;
 
 				half4 color = half4(BaseColor, Alpha );
 
@@ -2476,7 +2975,6 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#pragma shader_feature_local_fragment _ALPHATEST_ON
 			#pragma shader_feature_local _NORMALMAP
 			#define ASE_SRP_VERSION 140008
-			#define ASE_USING_SAMPLING_MACROS 1
 
 
 			#pragma vertex vert
@@ -2506,6 +3004,10 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#define ASE_NEEDS_VERT_NORMAL
 			#define ASE_NEEDS_VERT_TANGENT
 			#define ASE_NEEDS_FRAG_WORLD_POSITION
+			#define ASE_NEEDS_FRAG_POSITION
+			#pragma shader_feature_local BOOLEAN_USE_WROLDSPACE_ON
+			#pragma shader_feature_local BOOLEAN_WORLDORIGIN_ON
+			#pragma shader_feature_local BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
 
 
 			#if defined(ASE_EARLY_Z_DEPTH_OPTIMIZE) && (SHADER_TARGET >= 45)
@@ -2539,6 +3041,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				#endif
 				float4 ase_texcoord5 : TEXCOORD5;
 				float4 ase_texcoord6 : TEXCOORD6;
+				float4 ase_texcoord7 : TEXCOORD7;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 				UNITY_VERTEX_OUTPUT_STEREO
 			};
@@ -2546,15 +3049,22 @@ Shader "Universal Render Pipeline/Lit Outline"
 			CBUFFER_START(UnityPerMaterial)
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
 			float4 _EmissionColor;
-			float _SmoothnessTextureChannel;
-			float _AlphaClip;
-			float _Parallax;
-			float _BumpScale;
+			float3 _DissolveDirection;
+			float3 _DissolveOffset;
+			float2 _NoiseUVSpeed;
 			float _Metallic;
+			float _EdgeColorIntensity;
+			float _DirectionEdgeWidthScale;
+			float _SmoothnessTextureChannel;
 			float _Smoothness;
+			float _EdgeWidth;
+			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
-			float _Cutoff;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -2587,12 +3097,9 @@ Shader "Universal Render Pipeline/Lit Outline"
 				int _PassValue;
 			#endif
 
-			TEXTURE2D(_BumpMap);
-			TEXTURE2D(_BaseMap);
-			TEXTURE2D(_ParallaxMap);
-			SAMPLER(sampler_ParallaxMap);
-			SAMPLER(sampler_BumpMap);
-			SAMPLER(sampler_BaseMap);
+			sampler2D _BumpMap;
+			sampler2D _BaseMap;
+			sampler2D _ParallaxMap;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"
@@ -2610,6 +3117,48 @@ Shader "Universal Render Pipeline/Lit Outline"
 				return h* (v.xy / v.z);
 			}
 			
+			inline float noise_randomValue (float2 uv) { return frac(sin(dot(uv, float2(12.9898, 78.233)))*43758.5453); }
+			inline float noise_interpolate (float a, float b, float t) { return (1.0-t)*a + (t*b); }
+			inline float valueNoise (float2 uv)
+			{
+				float2 i = floor(uv);
+				float2 f = frac( uv );
+				f = f* f * (3.0 - 2.0 * f);
+				uv = abs( frac(uv) - 0.5);
+				float2 c0 = i + float2( 0.0, 0.0 );
+				float2 c1 = i + float2( 1.0, 0.0 );
+				float2 c2 = i + float2( 0.0, 1.0 );
+				float2 c3 = i + float2( 1.0, 1.0 );
+				float r0 = noise_randomValue( c0 );
+				float r1 = noise_randomValue( c1 );
+				float r2 = noise_randomValue( c2 );
+				float r3 = noise_randomValue( c3 );
+				float bottomOfGrid = noise_interpolate( r0, r1, f.x );
+				float topOfGrid = noise_interpolate( r2, r3, f.x );
+				float t = noise_interpolate( bottomOfGrid, topOfGrid, f.y );
+				return t;
+			}
+			
+			float SimpleNoise(float2 UV)
+			{
+				float t = 0.0;
+				float freq = pow( 2.0, float( 0 ) );
+				float amp = pow( 0.5, float( 3 - 0 ) );
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(1));
+				amp = pow(0.5, float(3-1));
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(2));
+				amp = pow(0.5, float(3-2));
+				t += valueNoise( UV/freq )*amp;
+				return t;
+			}
+			
+			float3 ObjectPosition19_g7(  )
+			{
+				return GetAbsolutePositionWS(UNITY_MATRIX_M._m03_m13_m23);
+			}
+			
 
 			VertexOutput VertexFunction( VertexInput v  )
 			{
@@ -2625,6 +3174,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				o.ase_texcoord6.xyz = ase_worldBitangent;
 				
 				o.ase_texcoord5.xy = v.ase_texcoord.xy;
+				o.ase_texcoord7 = v.vertex;
 				
 				//setting value to unused interpolator channels and avoid initialization warnings
 				o.ase_texcoord5.zw = 0;
@@ -2792,13 +3342,13 @@ Shader "Universal Render Pipeline/Lit Outline"
 				ase_worldViewDir = normalize(ase_worldViewDir);
 				float3 ase_tanViewDir =  tanToWorld0 * ase_worldViewDir.x + tanToWorld1 * ase_worldViewDir.y  + tanToWorld2 * ase_worldViewDir.z;
 				ase_tanViewDir = normalize(ase_tanViewDir);
-				float2 paralaxOffset282 = ParallaxOffset( SAMPLE_TEXTURE2D( _ParallaxMap, sampler_ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
+				float2 paralaxOffset282 = ParallaxOffset( tex2D( _ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
 				#ifdef _PARALLAXMAP
 				float2 staticSwitch297 = ( uv_BaseMap + paralaxOffset282 );
 				#else
 				float2 staticSwitch297 = uv_BaseMap;
 				#endif
-				float3 unpack21 = UnpackNormalScale( SAMPLE_TEXTURE2D( _BumpMap, sampler_BumpMap, staticSwitch297 ), _BumpScale );
+				float3 unpack21 = UnpackNormalScale( tex2D( _BumpMap, staticSwitch297 ), _BumpScale );
 				unpack21.z = lerp( 1, unpack21.z, saturate(_BumpScale) );
 				#ifdef _NORMALMAP
 				float3 staticSwitch223 = unpack21;
@@ -2807,13 +3357,54 @@ Shader "Universal Render Pipeline/Lit Outline"
 				#endif
 				float3 Normal77 = staticSwitch223;
 				
-				float4 tex2DNode10 = SAMPLE_TEXTURE2D( _BaseMap, sampler_BaseMap, staticSwitch297 );
+				float4 tex2DNode10 = tex2D( _BaseMap, staticSwitch297 );
 				float4 BaseMap89 = ( tex2DNode10 * _BaseColor );
+				
+				float temp_output_2_0_g6 = _EdgeWidth;
+				float temp_output_1_0_g6 = 0.5;
+				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
+				float2 texCoord384 = IN.ase_texcoord5.xy * float2( 1,1 ) + float2( 0,0 );
+				float simpleNoise372 = SimpleNoise( ( texCoord384 + ( _NoiseUVSpeed * ( _TimeParameters.x * 0.005 ) ) )*_NoiseScale );
+				float3 temp_output_2_0_g7 = _DissolveOffset;
+				float3 objToWorld12_g7 = mul( GetObjectToWorldMatrix(), float4( IN.ase_texcoord7.xyz, 1 ) ).xyz;
+				float3 localObjectPosition19_g7 = ObjectPosition19_g7();
+				#ifdef BOOLEAN_WORLDORIGIN_ON
+				float3 staticSwitch15_g7 = temp_output_2_0_g7;
+				#else
+				float3 staticSwitch15_g7 = ( localObjectPosition19_g7 + temp_output_2_0_g7 );
+				#endif
+				#ifdef BOOLEAN_USE_WROLDSPACE_ON
+				float3 staticSwitch7_g7 = ( objToWorld12_g7 - staticSwitch15_g7 );
+				#else
+				float3 staticSwitch7_g7 = ( IN.ase_texcoord7.xyz - temp_output_2_0_g7 );
+				#endif
+				float3 normalizeResult383 = normalize( ( _DissolveDirection + float3( 0,0.001,0 ) ) );
+				float3 break5_g8 = radians( _DissolveDirection );
+				float temp_output_6_0_g8 = sin( break5_g8.x );
+				float temp_output_13_0_g8 = sin( break5_g8.y );
+				float temp_output_19_0_g8 = cos( break5_g8.z );
+				float temp_output_11_0_g8 = cos( break5_g8.x );
+				float temp_output_21_0_g8 = sin( break5_g8.z );
+				float3 appendResult10_g8 = (float3(( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_19_0_g8 ) - ( temp_output_11_0_g8 * temp_output_21_0_g8 ) ) , ( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_21_0_g8 ) + ( temp_output_11_0_g8 * temp_output_19_0_g8 ) ) , ( temp_output_6_0_g8 * cos( break5_g8.y ) )));
+				#ifdef BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
+				float3 staticSwitch378 = appendResult10_g8;
+				#else
+				float3 staticSwitch378 = normalizeResult383;
+				#endif
+				float dotResult10_g7 = dot( staticSwitch7_g7 , staticSwitch378 );
+				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
+				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
+				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
+				#ifdef _ALPHATEST_ON
+				float staticSwitch333 = ( temp_output_10_0_g5 + 0.0001 );
+				#else
+				float staticSwitch333 = 0.0;
+				#endif
 				
 
 				float3 Normal = Normal77;
 				float Alpha = (BaseMap89).a;
-				float AlphaClipThreshold = _Cutoff;
+				float AlphaClipThreshold = staticSwitch333;
 				#ifdef ASE_DEPTH_WRITE_ON
 					float DepthValue = IN.clipPos.z;
 				#endif
@@ -2886,7 +3477,6 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#pragma shader_feature_local_fragment _ALPHATEST_ON
 			#pragma shader_feature_local _NORMALMAP
 			#define ASE_SRP_VERSION 140008
-			#define ASE_USING_SAMPLING_MACROS 1
 
 
 			#pragma shader_feature_local _RECEIVE_SHADOWS_OFF
@@ -2939,6 +3529,10 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#define ASE_NEEDS_FRAG_WORLD_NORMAL
 			#define ASE_NEEDS_FRAG_WORLD_BITANGENT
 			#define ASE_NEEDS_FRAG_WORLD_VIEW_DIR
+			#define ASE_NEEDS_FRAG_POSITION
+			#pragma shader_feature_local BOOLEAN_USE_WROLDSPACE_ON
+			#pragma shader_feature_local BOOLEAN_WORLDORIGIN_ON
+			#pragma shader_feature_local BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
 
 
 			#if defined(ASE_EARLY_Z_DEPTH_OPTIMIZE) && (SHADER_TARGET >= 45)
@@ -2977,6 +3571,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float2 dynamicLightmapUV : TEXCOORD7;
 				#endif
 				float4 ase_texcoord8 : TEXCOORD8;
+				float4 ase_texcoord9 : TEXCOORD9;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 				UNITY_VERTEX_OUTPUT_STEREO
 			};
@@ -2984,15 +3579,22 @@ Shader "Universal Render Pipeline/Lit Outline"
 			CBUFFER_START(UnityPerMaterial)
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
 			float4 _EmissionColor;
-			float _SmoothnessTextureChannel;
-			float _AlphaClip;
-			float _Parallax;
-			float _BumpScale;
+			float3 _DissolveDirection;
+			float3 _DissolveOffset;
+			float2 _NoiseUVSpeed;
 			float _Metallic;
+			float _EdgeColorIntensity;
+			float _DirectionEdgeWidthScale;
+			float _SmoothnessTextureChannel;
 			float _Smoothness;
+			float _EdgeWidth;
+			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
-			float _Cutoff;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -3025,18 +3627,13 @@ Shader "Universal Render Pipeline/Lit Outline"
 				int _PassValue;
 			#endif
 
-			TEXTURE2D(_BaseMap);
-			TEXTURE2D(_ParallaxMap);
-			SAMPLER(sampler_ParallaxMap);
-			SAMPLER(sampler_BaseMap);
-			TEXTURE2D(_BumpMap);
-			SAMPLER(sampler_BumpMap);
-			TEXTURE2D(_EmissionMap);
-			SAMPLER(sampler_EmissionMap);
-			TEXTURE2D(_MetallicGlossMap);
+			sampler2D _BaseMap;
+			sampler2D _ParallaxMap;
+			sampler2D _BumpMap;
+			sampler2D _EmissionMap;
+			sampler2D _MetallicGlossMap;
 			SAMPLER(sampler_MetallicGlossMap);
-			TEXTURE2D(_OcclusionMap);
-			SAMPLER(sampler_OcclusionMap);
+			sampler2D _OcclusionMap;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"
@@ -3051,7 +3648,49 @@ Shader "Universal Render Pipeline/Lit Outline"
 				return h* (v.xy / v.z);
 			}
 			
-			half4 SampleMetallicSpecGloss( TEXTURE2D(tex), SamplerState ss, half2 uv, half albedoAlpha, half metallic, half smoothness )
+			inline float noise_randomValue (float2 uv) { return frac(sin(dot(uv, float2(12.9898, 78.233)))*43758.5453); }
+			inline float noise_interpolate (float a, float b, float t) { return (1.0-t)*a + (t*b); }
+			inline float valueNoise (float2 uv)
+			{
+				float2 i = floor(uv);
+				float2 f = frac( uv );
+				f = f* f * (3.0 - 2.0 * f);
+				uv = abs( frac(uv) - 0.5);
+				float2 c0 = i + float2( 0.0, 0.0 );
+				float2 c1 = i + float2( 1.0, 0.0 );
+				float2 c2 = i + float2( 0.0, 1.0 );
+				float2 c3 = i + float2( 1.0, 1.0 );
+				float r0 = noise_randomValue( c0 );
+				float r1 = noise_randomValue( c1 );
+				float r2 = noise_randomValue( c2 );
+				float r3 = noise_randomValue( c3 );
+				float bottomOfGrid = noise_interpolate( r0, r1, f.x );
+				float topOfGrid = noise_interpolate( r2, r3, f.x );
+				float t = noise_interpolate( bottomOfGrid, topOfGrid, f.y );
+				return t;
+			}
+			
+			float SimpleNoise(float2 UV)
+			{
+				float t = 0.0;
+				float freq = pow( 2.0, float( 0 ) );
+				float amp = pow( 0.5, float( 3 - 0 ) );
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(1));
+				amp = pow(0.5, float(3-1));
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(2));
+				amp = pow(0.5, float(3-2));
+				t += valueNoise( UV/freq )*amp;
+				return t;
+			}
+			
+			float3 ObjectPosition19_g7(  )
+			{
+				return GetAbsolutePositionWS(UNITY_MATRIX_M._m03_m13_m23);
+			}
+			
+			half4 SampleMetallicSpecGloss( sampler2D tex, SamplerState ss, half2 uv, half albedoAlpha, half metallic, half smoothness )
 			{
 				    half4 specGloss;
 				    
@@ -3083,6 +3722,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
 				o.ase_texcoord8.xy = v.texcoord.xy;
+				o.ase_texcoord9 = v.vertex;
 				
 				//setting value to unused interpolator channels and avoid initialization warnings
 				o.ase_texcoord8.zw = 0;
@@ -3285,16 +3925,16 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float3 tanToWorld2 = float3( WorldTangent.z, WorldBiTangent.z, WorldNormal.z );
 				float3 ase_tanViewDir =  tanToWorld0 * WorldViewDirection.x + tanToWorld1 * WorldViewDirection.y  + tanToWorld2 * WorldViewDirection.z;
 				ase_tanViewDir = normalize(ase_tanViewDir);
-				float2 paralaxOffset282 = ParallaxOffset( SAMPLE_TEXTURE2D( _ParallaxMap, sampler_ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
+				float2 paralaxOffset282 = ParallaxOffset( tex2D( _ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
 				#ifdef _PARALLAXMAP
 				float2 staticSwitch297 = ( uv_BaseMap + paralaxOffset282 );
 				#else
 				float2 staticSwitch297 = uv_BaseMap;
 				#endif
-				float4 tex2DNode10 = SAMPLE_TEXTURE2D( _BaseMap, sampler_BaseMap, staticSwitch297 );
+				float4 tex2DNode10 = tex2D( _BaseMap, staticSwitch297 );
 				float4 BaseMap89 = ( tex2DNode10 * _BaseColor );
 				
-				float3 unpack21 = UnpackNormalScale( SAMPLE_TEXTURE2D( _BumpMap, sampler_BumpMap, staticSwitch297 ), _BumpScale );
+				float3 unpack21 = UnpackNormalScale( tex2D( _BumpMap, staticSwitch297 ), _BumpScale );
 				unpack21.z = lerp( 1, unpack21.z, saturate(_BumpScale) );
 				#ifdef _NORMALMAP
 				float3 staticSwitch223 = unpack21;
@@ -3304,13 +3944,53 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float3 Normal77 = staticSwitch223;
 				
 				#ifdef _EMISSION
-				float3 staticSwitch182 = ( (_EmissionColor).rgb * (SAMPLE_TEXTURE2D( _EmissionMap, sampler_EmissionMap, staticSwitch297 )).rgb );
+				float3 staticSwitch182 = ( (_EmissionColor).rgb * (tex2D( _EmissionMap, staticSwitch297 )).rgb );
 				#else
 				float3 staticSwitch182 = float3(0,0,0);
 				#endif
 				float3 Emissive104 = staticSwitch182;
+				float temp_output_2_0_g6 = _EdgeWidth;
+				float temp_output_1_0_g6 = 0.5;
+				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
+				float2 texCoord384 = IN.ase_texcoord8.xy * float2( 1,1 ) + float2( 0,0 );
+				float simpleNoise372 = SimpleNoise( ( texCoord384 + ( _NoiseUVSpeed * ( _TimeParameters.x * 0.005 ) ) )*_NoiseScale );
+				float3 temp_output_2_0_g7 = _DissolveOffset;
+				float3 objToWorld12_g7 = mul( GetObjectToWorldMatrix(), float4( IN.ase_texcoord9.xyz, 1 ) ).xyz;
+				float3 localObjectPosition19_g7 = ObjectPosition19_g7();
+				#ifdef BOOLEAN_WORLDORIGIN_ON
+				float3 staticSwitch15_g7 = temp_output_2_0_g7;
+				#else
+				float3 staticSwitch15_g7 = ( localObjectPosition19_g7 + temp_output_2_0_g7 );
+				#endif
+				#ifdef BOOLEAN_USE_WROLDSPACE_ON
+				float3 staticSwitch7_g7 = ( objToWorld12_g7 - staticSwitch15_g7 );
+				#else
+				float3 staticSwitch7_g7 = ( IN.ase_texcoord9.xyz - temp_output_2_0_g7 );
+				#endif
+				float3 normalizeResult383 = normalize( ( _DissolveDirection + float3( 0,0.001,0 ) ) );
+				float3 break5_g8 = radians( _DissolveDirection );
+				float temp_output_6_0_g8 = sin( break5_g8.x );
+				float temp_output_13_0_g8 = sin( break5_g8.y );
+				float temp_output_19_0_g8 = cos( break5_g8.z );
+				float temp_output_11_0_g8 = cos( break5_g8.x );
+				float temp_output_21_0_g8 = sin( break5_g8.z );
+				float3 appendResult10_g8 = (float3(( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_19_0_g8 ) - ( temp_output_11_0_g8 * temp_output_21_0_g8 ) ) , ( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_21_0_g8 ) + ( temp_output_11_0_g8 * temp_output_19_0_g8 ) ) , ( temp_output_6_0_g8 * cos( break5_g8.y ) )));
+				#ifdef BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
+				float3 staticSwitch378 = appendResult10_g8;
+				#else
+				float3 staticSwitch378 = normalizeResult383;
+				#endif
+				float dotResult10_g7 = dot( staticSwitch7_g7 , staticSwitch378 );
+				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
+				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
+				float lerpResult9_g6 = lerp( 0.0 , ( 1.0 + temp_output_2_0_g6 ) , temp_output_1_0_g6);
+				#ifdef _ALPHATEST_ON
+				float4 staticSwitch388 = ( ( ( temp_output_7_0_g6 - step( lerpResult9_g6 , temp_output_3_0_g6 ) ) * _EdgeColor ) * _EdgeColorIntensity );
+				#else
+				float4 staticSwitch388 = float4( Emissive104 , 0.0 );
+				#endif
 				
-				TEXTURE2D(tex244) = _MetallicGlossMap;
+				sampler2D tex244 = _MetallicGlossMap;
 				SamplerState ss244 = sampler_MetallicGlossMap;
 				half2 uv244 = staticSwitch297;
 				float BaseAlpha175 = tex2DNode10.a;
@@ -3322,22 +4002,29 @@ Shader "Universal Render Pipeline/Lit Outline"
 				
 				float Smoothness116 = (localSampleMetallicSpecGloss244).w;
 				
-				float3 temp_cast_0 = (SAMPLE_TEXTURE2D( _OcclusionMap, sampler_OcclusionMap, staticSwitch297 ).g).xxx;
+				float3 temp_cast_2 = (tex2D( _OcclusionMap, staticSwitch297 ).g).xxx;
 				float temp_output_2_0_g2 = _OcclusionStrength;
 				float temp_output_3_0_g2 = ( 1.0 - temp_output_2_0_g2 );
 				float3 appendResult7_g2 = (float3(temp_output_3_0_g2 , temp_output_3_0_g2 , temp_output_3_0_g2));
-				float AO81 = (( ( temp_cast_0 * temp_output_2_0_g2 ) + appendResult7_g2 )).x;
+				float AO81 = (( ( temp_cast_2 * temp_output_2_0_g2 ) + appendResult7_g2 )).x;
+				
+				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
+				#ifdef _ALPHATEST_ON
+				float staticSwitch333 = ( temp_output_10_0_g5 + 0.0001 );
+				#else
+				float staticSwitch333 = 0.0;
+				#endif
 				
 
 				float3 BaseColor = (BaseMap89).rgb;
 				float3 Normal = Normal77;
-				float3 Emission = Emissive104;
+				float3 Emission = staticSwitch388.rgb;
 				float3 Specular = 0.5;
 				float Metallic = Metallic79;
 				float Smoothness = Smoothness116;
 				float Occlusion = AO81;
 				float Alpha = (BaseMap89).a;
-				float AlphaClipThreshold = _Cutoff;
+				float AlphaClipThreshold = staticSwitch333;
 				float AlphaClipThresholdShadow = 0.5;
 				float3 BakedGI = 0;
 				float3 RefractionColor = 1;
@@ -3453,7 +4140,6 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#define _NORMAL_DROPOFF_TS 1
 			#define ASE_FOG 1
 			#define ASE_SRP_VERSION 140008
-			#define ASE_USING_SAMPLING_MACROS 1
 
 
 			#pragma vertex vert
@@ -3475,6 +4161,10 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/ShaderPass.hlsl"
 
 			#define ASE_NEEDS_VERT_NORMAL
+			#define ASE_NEEDS_FRAG_POSITION
+			#pragma shader_feature_local BOOLEAN_USE_WROLDSPACE_ON
+			#pragma shader_feature_local BOOLEAN_WORLDORIGIN_ON
+			#pragma shader_feature_local BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
 
 
 			struct VertexInput
@@ -3494,6 +4184,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float4 ase_texcoord2 : TEXCOORD2;
 				float4 ase_texcoord3 : TEXCOORD3;
 				float4 ase_texcoord4 : TEXCOORD4;
+				float4 ase_texcoord5 : TEXCOORD5;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 				UNITY_VERTEX_OUTPUT_STEREO
 			};
@@ -3501,15 +4192,22 @@ Shader "Universal Render Pipeline/Lit Outline"
 			CBUFFER_START(UnityPerMaterial)
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
 			float4 _EmissionColor;
-			float _SmoothnessTextureChannel;
-			float _AlphaClip;
-			float _Parallax;
-			float _BumpScale;
+			float3 _DissolveDirection;
+			float3 _DissolveOffset;
+			float2 _NoiseUVSpeed;
 			float _Metallic;
+			float _EdgeColorIntensity;
+			float _DirectionEdgeWidthScale;
+			float _SmoothnessTextureChannel;
 			float _Smoothness;
+			float _EdgeWidth;
+			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
-			float _Cutoff;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -3542,10 +4240,8 @@ Shader "Universal Render Pipeline/Lit Outline"
 				int _PassValue;
 			#endif
 
-			TEXTURE2D(_BaseMap);
-			TEXTURE2D(_ParallaxMap);
-			SAMPLER(sampler_ParallaxMap);
-			SAMPLER(sampler_BaseMap);
+			sampler2D _BaseMap;
+			sampler2D _ParallaxMap;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"
@@ -3561,6 +4257,48 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float3 v = normalize( viewDir );
 				v.z += 0.42;
 				return h* (v.xy / v.z);
+			}
+			
+			inline float noise_randomValue (float2 uv) { return frac(sin(dot(uv, float2(12.9898, 78.233)))*43758.5453); }
+			inline float noise_interpolate (float a, float b, float t) { return (1.0-t)*a + (t*b); }
+			inline float valueNoise (float2 uv)
+			{
+				float2 i = floor(uv);
+				float2 f = frac( uv );
+				f = f* f * (3.0 - 2.0 * f);
+				uv = abs( frac(uv) - 0.5);
+				float2 c0 = i + float2( 0.0, 0.0 );
+				float2 c1 = i + float2( 1.0, 0.0 );
+				float2 c2 = i + float2( 0.0, 1.0 );
+				float2 c3 = i + float2( 1.0, 1.0 );
+				float r0 = noise_randomValue( c0 );
+				float r1 = noise_randomValue( c1 );
+				float r2 = noise_randomValue( c2 );
+				float r3 = noise_randomValue( c3 );
+				float bottomOfGrid = noise_interpolate( r0, r1, f.x );
+				float topOfGrid = noise_interpolate( r2, r3, f.x );
+				float t = noise_interpolate( bottomOfGrid, topOfGrid, f.y );
+				return t;
+			}
+			
+			float SimpleNoise(float2 UV)
+			{
+				float t = 0.0;
+				float freq = pow( 2.0, float( 0 ) );
+				float amp = pow( 0.5, float( 3 - 0 ) );
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(1));
+				amp = pow(0.5, float(3-1));
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(2));
+				amp = pow(0.5, float(3-2));
+				t += valueNoise( UV/freq )*amp;
+				return t;
+			}
+			
+			float3 ObjectPosition19_g7(  )
+			{
+				return GetAbsolutePositionWS(UNITY_MATRIX_M._m03_m13_m23);
 			}
 			
 
@@ -3590,6 +4328,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				o.ase_texcoord4.xyz = ase_worldPos;
 				
 				o.ase_texcoord.xy = v.ase_texcoord.xy;
+				o.ase_texcoord5 = v.vertex;
 				
 				//setting value to unused interpolator channels and avoid initialization warnings
 				o.ase_texcoord.zw = 0;
@@ -3720,18 +4459,59 @@ Shader "Universal Render Pipeline/Lit Outline"
 				ase_worldViewDir = normalize(ase_worldViewDir);
 				float3 ase_tanViewDir =  tanToWorld0 * ase_worldViewDir.x + tanToWorld1 * ase_worldViewDir.y  + tanToWorld2 * ase_worldViewDir.z;
 				ase_tanViewDir = normalize(ase_tanViewDir);
-				float2 paralaxOffset282 = ParallaxOffset( SAMPLE_TEXTURE2D( _ParallaxMap, sampler_ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
+				float2 paralaxOffset282 = ParallaxOffset( tex2D( _ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
 				#ifdef _PARALLAXMAP
 				float2 staticSwitch297 = ( uv_BaseMap + paralaxOffset282 );
 				#else
 				float2 staticSwitch297 = uv_BaseMap;
 				#endif
-				float4 tex2DNode10 = SAMPLE_TEXTURE2D( _BaseMap, sampler_BaseMap, staticSwitch297 );
+				float4 tex2DNode10 = tex2D( _BaseMap, staticSwitch297 );
 				float4 BaseMap89 = ( tex2DNode10 * _BaseColor );
+				
+				float temp_output_2_0_g6 = _EdgeWidth;
+				float temp_output_1_0_g6 = 0.5;
+				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
+				float2 texCoord384 = IN.ase_texcoord.xy * float2( 1,1 ) + float2( 0,0 );
+				float simpleNoise372 = SimpleNoise( ( texCoord384 + ( _NoiseUVSpeed * ( _TimeParameters.x * 0.005 ) ) )*_NoiseScale );
+				float3 temp_output_2_0_g7 = _DissolveOffset;
+				float3 objToWorld12_g7 = mul( GetObjectToWorldMatrix(), float4( IN.ase_texcoord5.xyz, 1 ) ).xyz;
+				float3 localObjectPosition19_g7 = ObjectPosition19_g7();
+				#ifdef BOOLEAN_WORLDORIGIN_ON
+				float3 staticSwitch15_g7 = temp_output_2_0_g7;
+				#else
+				float3 staticSwitch15_g7 = ( localObjectPosition19_g7 + temp_output_2_0_g7 );
+				#endif
+				#ifdef BOOLEAN_USE_WROLDSPACE_ON
+				float3 staticSwitch7_g7 = ( objToWorld12_g7 - staticSwitch15_g7 );
+				#else
+				float3 staticSwitch7_g7 = ( IN.ase_texcoord5.xyz - temp_output_2_0_g7 );
+				#endif
+				float3 normalizeResult383 = normalize( ( _DissolveDirection + float3( 0,0.001,0 ) ) );
+				float3 break5_g8 = radians( _DissolveDirection );
+				float temp_output_6_0_g8 = sin( break5_g8.x );
+				float temp_output_13_0_g8 = sin( break5_g8.y );
+				float temp_output_19_0_g8 = cos( break5_g8.z );
+				float temp_output_11_0_g8 = cos( break5_g8.x );
+				float temp_output_21_0_g8 = sin( break5_g8.z );
+				float3 appendResult10_g8 = (float3(( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_19_0_g8 ) - ( temp_output_11_0_g8 * temp_output_21_0_g8 ) ) , ( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_21_0_g8 ) + ( temp_output_11_0_g8 * temp_output_19_0_g8 ) ) , ( temp_output_6_0_g8 * cos( break5_g8.y ) )));
+				#ifdef BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
+				float3 staticSwitch378 = appendResult10_g8;
+				#else
+				float3 staticSwitch378 = normalizeResult383;
+				#endif
+				float dotResult10_g7 = dot( staticSwitch7_g7 , staticSwitch378 );
+				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
+				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
+				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
+				#ifdef _ALPHATEST_ON
+				float staticSwitch333 = ( temp_output_10_0_g5 + 0.0001 );
+				#else
+				float staticSwitch333 = 0.0;
+				#endif
 				
 
 				surfaceDescription.Alpha = (BaseMap89).a;
-				surfaceDescription.AlphaClipThreshold = _Cutoff;
+				surfaceDescription.AlphaClipThreshold = staticSwitch333;
 
 				#if _ALPHATEST_ON
 					float alphaClipThreshold = 0.01f;
@@ -3767,7 +4547,6 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#define _NORMAL_DROPOFF_TS 1
 			#define ASE_FOG 1
 			#define ASE_SRP_VERSION 140008
-			#define ASE_USING_SAMPLING_MACROS 1
 
 
 			#pragma vertex vert
@@ -3789,6 +4568,10 @@ Shader "Universal Render Pipeline/Lit Outline"
 			#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/ShaderPass.hlsl"
 
 			#define ASE_NEEDS_VERT_NORMAL
+			#define ASE_NEEDS_FRAG_POSITION
+			#pragma shader_feature_local BOOLEAN_USE_WROLDSPACE_ON
+			#pragma shader_feature_local BOOLEAN_WORLDORIGIN_ON
+			#pragma shader_feature_local BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
 
 
 			struct VertexInput
@@ -3808,6 +4591,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float4 ase_texcoord2 : TEXCOORD2;
 				float4 ase_texcoord3 : TEXCOORD3;
 				float4 ase_texcoord4 : TEXCOORD4;
+				float4 ase_texcoord5 : TEXCOORD5;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 				UNITY_VERTEX_OUTPUT_STEREO
 			};
@@ -3815,15 +4599,22 @@ Shader "Universal Render Pipeline/Lit Outline"
 			CBUFFER_START(UnityPerMaterial)
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
 			float4 _EmissionColor;
-			float _SmoothnessTextureChannel;
-			float _AlphaClip;
-			float _Parallax;
-			float _BumpScale;
+			float3 _DissolveDirection;
+			float3 _DissolveOffset;
+			float2 _NoiseUVSpeed;
 			float _Metallic;
+			float _EdgeColorIntensity;
+			float _DirectionEdgeWidthScale;
+			float _SmoothnessTextureChannel;
 			float _Smoothness;
+			float _EdgeWidth;
+			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
-			float _Cutoff;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -3856,10 +4647,8 @@ Shader "Universal Render Pipeline/Lit Outline"
 				int _PassValue;
 			#endif
 
-			TEXTURE2D(_BaseMap);
-			TEXTURE2D(_ParallaxMap);
-			SAMPLER(sampler_ParallaxMap);
-			SAMPLER(sampler_BaseMap);
+			sampler2D _BaseMap;
+			sampler2D _ParallaxMap;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"
@@ -3875,6 +4664,48 @@ Shader "Universal Render Pipeline/Lit Outline"
 				float3 v = normalize( viewDir );
 				v.z += 0.42;
 				return h* (v.xy / v.z);
+			}
+			
+			inline float noise_randomValue (float2 uv) { return frac(sin(dot(uv, float2(12.9898, 78.233)))*43758.5453); }
+			inline float noise_interpolate (float a, float b, float t) { return (1.0-t)*a + (t*b); }
+			inline float valueNoise (float2 uv)
+			{
+				float2 i = floor(uv);
+				float2 f = frac( uv );
+				f = f* f * (3.0 - 2.0 * f);
+				uv = abs( frac(uv) - 0.5);
+				float2 c0 = i + float2( 0.0, 0.0 );
+				float2 c1 = i + float2( 1.0, 0.0 );
+				float2 c2 = i + float2( 0.0, 1.0 );
+				float2 c3 = i + float2( 1.0, 1.0 );
+				float r0 = noise_randomValue( c0 );
+				float r1 = noise_randomValue( c1 );
+				float r2 = noise_randomValue( c2 );
+				float r3 = noise_randomValue( c3 );
+				float bottomOfGrid = noise_interpolate( r0, r1, f.x );
+				float topOfGrid = noise_interpolate( r2, r3, f.x );
+				float t = noise_interpolate( bottomOfGrid, topOfGrid, f.y );
+				return t;
+			}
+			
+			float SimpleNoise(float2 UV)
+			{
+				float t = 0.0;
+				float freq = pow( 2.0, float( 0 ) );
+				float amp = pow( 0.5, float( 3 - 0 ) );
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(1));
+				amp = pow(0.5, float(3-1));
+				t += valueNoise( UV/freq )*amp;
+				freq = pow(2.0, float(2));
+				amp = pow(0.5, float(3-2));
+				t += valueNoise( UV/freq )*amp;
+				return t;
+			}
+			
+			float3 ObjectPosition19_g7(  )
+			{
+				return GetAbsolutePositionWS(UNITY_MATRIX_M._m03_m13_m23);
 			}
 			
 
@@ -3904,6 +4735,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 				o.ase_texcoord4.xyz = ase_worldPos;
 				
 				o.ase_texcoord.xy = v.ase_texcoord.xy;
+				o.ase_texcoord5 = v.vertex;
 				
 				//setting value to unused interpolator channels and avoid initialization warnings
 				o.ase_texcoord.zw = 0;
@@ -4033,18 +4865,59 @@ Shader "Universal Render Pipeline/Lit Outline"
 				ase_worldViewDir = normalize(ase_worldViewDir);
 				float3 ase_tanViewDir =  tanToWorld0 * ase_worldViewDir.x + tanToWorld1 * ase_worldViewDir.y  + tanToWorld2 * ase_worldViewDir.z;
 				ase_tanViewDir = normalize(ase_tanViewDir);
-				float2 paralaxOffset282 = ParallaxOffset( SAMPLE_TEXTURE2D( _ParallaxMap, sampler_ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
+				float2 paralaxOffset282 = ParallaxOffset( tex2D( _ParallaxMap, uv_BaseMap ).g , _Parallax , ase_tanViewDir );
 				#ifdef _PARALLAXMAP
 				float2 staticSwitch297 = ( uv_BaseMap + paralaxOffset282 );
 				#else
 				float2 staticSwitch297 = uv_BaseMap;
 				#endif
-				float4 tex2DNode10 = SAMPLE_TEXTURE2D( _BaseMap, sampler_BaseMap, staticSwitch297 );
+				float4 tex2DNode10 = tex2D( _BaseMap, staticSwitch297 );
 				float4 BaseMap89 = ( tex2DNode10 * _BaseColor );
+				
+				float temp_output_2_0_g6 = _EdgeWidth;
+				float temp_output_1_0_g6 = 0.5;
+				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
+				float2 texCoord384 = IN.ase_texcoord.xy * float2( 1,1 ) + float2( 0,0 );
+				float simpleNoise372 = SimpleNoise( ( texCoord384 + ( _NoiseUVSpeed * ( _TimeParameters.x * 0.005 ) ) )*_NoiseScale );
+				float3 temp_output_2_0_g7 = _DissolveOffset;
+				float3 objToWorld12_g7 = mul( GetObjectToWorldMatrix(), float4( IN.ase_texcoord5.xyz, 1 ) ).xyz;
+				float3 localObjectPosition19_g7 = ObjectPosition19_g7();
+				#ifdef BOOLEAN_WORLDORIGIN_ON
+				float3 staticSwitch15_g7 = temp_output_2_0_g7;
+				#else
+				float3 staticSwitch15_g7 = ( localObjectPosition19_g7 + temp_output_2_0_g7 );
+				#endif
+				#ifdef BOOLEAN_USE_WROLDSPACE_ON
+				float3 staticSwitch7_g7 = ( objToWorld12_g7 - staticSwitch15_g7 );
+				#else
+				float3 staticSwitch7_g7 = ( IN.ase_texcoord5.xyz - temp_output_2_0_g7 );
+				#endif
+				float3 normalizeResult383 = normalize( ( _DissolveDirection + float3( 0,0.001,0 ) ) );
+				float3 break5_g8 = radians( _DissolveDirection );
+				float temp_output_6_0_g8 = sin( break5_g8.x );
+				float temp_output_13_0_g8 = sin( break5_g8.y );
+				float temp_output_19_0_g8 = cos( break5_g8.z );
+				float temp_output_11_0_g8 = cos( break5_g8.x );
+				float temp_output_21_0_g8 = sin( break5_g8.z );
+				float3 appendResult10_g8 = (float3(( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_19_0_g8 ) - ( temp_output_11_0_g8 * temp_output_21_0_g8 ) ) , ( ( ( temp_output_6_0_g8 * temp_output_13_0_g8 ) * temp_output_21_0_g8 ) + ( temp_output_11_0_g8 * temp_output_19_0_g8 ) ) , ( temp_output_6_0_g8 * cos( break5_g8.y ) )));
+				#ifdef BOOLEAN_DIRECTION_FROM_EULERANGLE_ON
+				float3 staticSwitch378 = appendResult10_g8;
+				#else
+				float3 staticSwitch378 = normalizeResult383;
+				#endif
+				float dotResult10_g7 = dot( staticSwitch7_g7 , staticSwitch378 );
+				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
+				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
+				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
+				#ifdef _ALPHATEST_ON
+				float staticSwitch333 = ( temp_output_10_0_g5 + 0.0001 );
+				#else
+				float staticSwitch333 = 0.0;
+				#endif
 				
 
 				surfaceDescription.Alpha = (BaseMap89).a;
-				surfaceDescription.AlphaClipThreshold = _Cutoff;
+				surfaceDescription.AlphaClipThreshold = staticSwitch333;
 
 				#if _ALPHATEST_ON
 					float alphaClipThreshold = 0.01f;
@@ -4070,7 +4943,7 @@ Shader "Universal Render Pipeline/Lit Outline"
 		
 	}
 	
-	CustomEditor "NKStudio.ASEMaterialOutlineGUI"
+	CustomEditor "NKStudio.ASEMaterialDissolveOutlineGUI"
 	FallBack "Hidden/Shader Graph/FallbackError"
 	
 	Fallback Off
