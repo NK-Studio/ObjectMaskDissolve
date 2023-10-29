@@ -6,6 +6,6 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Direction Dissolve FX/URP/URP Samples.unity
+    path: Assets/Direction Dissolve FX/Demo/URP Samples.unity
     guid: 0a539a7e852df644496f2a0e6151c727
   m_configObjects: {}
