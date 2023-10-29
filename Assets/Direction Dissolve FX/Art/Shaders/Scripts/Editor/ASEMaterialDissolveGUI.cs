@@ -22,7 +22,7 @@ namespace NKStudio
         private MaterialProperty _occlusionMap;
         private MaterialProperty _highlights;
         private MaterialProperty _reflections;
-        
+
         // Dissolve
         private MaterialProperty _edgeWidth;
         private MaterialProperty _edgeColor;
@@ -33,10 +33,10 @@ namespace NKStudio
         private MaterialProperty _dissolveDirection;
         private MaterialProperty _noiseUVSpeed;
         private MaterialProperty _directionEdgeWidthScale;
-        
+
         private static readonly GUIContent DitherTex =
             new GUIContent("Dither", "Dither recommends an Alpha Clipping Threshold of 1f.");
-        
+
         private static readonly GUIContent DitherErrorTex =
             new GUIContent("Dither (Require Alpha Clipping)", "Available only when 'Alpha Clipping' is enabled.");
 
@@ -59,7 +59,7 @@ namespace NKStudio
             // Advanced Props
             _highlights = FindProperty("_SpecularHighlights", properties);
             _reflections = FindProperty("_EnvironmentReflections", properties);
-            
+
             // Dissolve Props
             _edgeWidth = FindProperty("_EdgeWidth", properties);
             _edgeColor = FindProperty("_EdgeColor", properties);
@@ -149,6 +149,7 @@ namespace NKStudio
                 InspectorBox(10, () =>
                 {
                     EditorGUILayout.LabelField("Dissolve System", EditorStyles.boldLabel);
+                    EditorGUI.BeginDisabledGroup(alphaClipProp.floatValue == 0);
                     materialEditor.ShaderProperty(_edgeWidth, "Edge Width");
                     materialEditor.ShaderProperty(_directionEdgeWidthScale, "Direction Edge Width Scale");
                     materialEditor.ShaderProperty(_noiseScale, "Noise Scale");
@@ -156,13 +157,16 @@ namespace NKStudio
                     materialEditor.ShaderProperty(_edgeColor, "Edge Color");
                     materialEditor.ShaderProperty(_edgeColorIntensity, "Edge Color Intensity");
                     EditorGUILayout.Space(3);
-                    _noiseUVSpeed.vectorValue = EditorGUILayout.Vector2Field(_noiseUVSpeed.displayName, _noiseUVSpeed.vectorValue);
-                    _dissolveOffset.vectorValue = EditorGUILayout.Vector3Field(_dissolveOffset.displayName, _dissolveOffset.vectorValue);
-                    _dissolveDirection.vectorValue = EditorGUILayout.Vector3Field(_dissolveDirection.displayName, _dissolveDirection.vectorValue);
-                    
+                    _noiseUVSpeed.vectorValue =
+                        EditorGUILayout.Vector2Field(_noiseUVSpeed.displayName, _noiseUVSpeed.vectorValue);
+                    _dissolveOffset.vectorValue =
+                        EditorGUILayout.Vector3Field(_dissolveOffset.displayName, _dissolveOffset.vectorValue);
+                    _dissolveDirection.vectorValue = EditorGUILayout.Vector3Field(_dissolveDirection.displayName,
+                        _dissolveDirection.vectorValue);
                     materialEditor.ShaderProperty(_BOOLEAN_DIRECTION_FROM_EULERANGLE, "Direction From Euler Angle");
-                    GUILayout.Space(5); // ----------------------------------------------------------------------
+                    EditorGUI.EndDisabledGroup();
                     
+                    GUILayout.Space(5); // ----------------------------------------------------------------------
                 });
 
                 EditorGUILayout.Separator(); // ------------------------------------------------------------------------

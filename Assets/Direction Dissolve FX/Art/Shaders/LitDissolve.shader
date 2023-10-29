@@ -19,6 +19,7 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 		_Metallic("Metallic", Range( 0 , 1)) = 0
 		_SmoothnessTextureChannel("_SmoothnessTextureChannel", Float) = 0
 		_Smoothness("Smoothness", Range( 0 , 1)) = 0.5
+		[Toggle(_EMISSION)] _UseEmission("Use Emission", Float) = 0
 		_EmissionMap("EmissionMap", 2D) = "white" {}
 		[HDR]_EmissionColor("EmissionColor", Color) = (0,0,0,0)
 		[Toggle]_AlphaClip("__clip", Float) = 0
@@ -318,23 +319,23 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 			};
 
 			CBUFFER_START(UnityPerMaterial)
-			float4 _EmissionColor;
-			float4 _EdgeColor;
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
+			float4 _EmissionColor;
 			float3 _DissolveDirection;
 			float3 _DissolveOffset;
 			float2 _NoiseUVSpeed;
-			float _EdgeWidth;
-			float _Smoothness;
-			float _NoiseScale;
-			float _Parallax;
-			float _AlphaClip;
+			float _Metallic;
+			float _EdgeColorIntensity;
 			float _DirectionEdgeWidthScale;
 			float _SmoothnessTextureChannel;
-			float _EdgeColorIntensity;
-			float _Metallic;
+			float _Smoothness;
+			float _EdgeWidth;
 			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
@@ -368,10 +369,10 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				int _PassValue;
 			#endif
 
-			sampler2D _EmissionMap;
 			sampler2D _BaseMap;
 			sampler2D _ParallaxMap;
 			sampler2D _BumpMap;
+			sampler2D _EmissionMap;
 			sampler2D _MetallicGlossMap;
 			SAMPLER(sampler_MetallicGlossMap);
 			sampler2D _OcclusionMap;
@@ -694,6 +695,12 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				#endif
 				float3 Normal77 = staticSwitch223;
 				
+				#ifdef _EMISSION
+				float3 staticSwitch182 = ( (_EmissionColor).rgb * (tex2D( _EmissionMap, staticSwitch297 )).rgb );
+				#else
+				float3 staticSwitch182 = float3(0,0,0);
+				#endif
+				float3 Emissive104 = staticSwitch182;
 				float temp_output_2_0_g6 = _EdgeWidth;
 				float temp_output_1_0_g6 = 0.5;
 				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
@@ -729,6 +736,11 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
 				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
 				float lerpResult9_g6 = lerp( 0.0 , ( 1.0 + temp_output_2_0_g6 ) , temp_output_1_0_g6);
+				#ifdef _ALPHATEST_ON
+				float4 staticSwitch388 = ( ( ( temp_output_7_0_g6 - step( lerpResult9_g6 , temp_output_3_0_g6 ) ) * _EdgeColor ) * _EdgeColorIntensity );
+				#else
+				float4 staticSwitch388 = float4( Emissive104 , 0.0 );
+				#endif
 				
 				sampler2D tex244 = _MetallicGlossMap;
 				SamplerState ss244 = sampler_MetallicGlossMap;
@@ -742,11 +754,11 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				
 				float Smoothness116 = (localSampleMetallicSpecGloss244).w;
 				
-				float3 temp_cast_1 = (tex2D( _OcclusionMap, staticSwitch297 ).g).xxx;
+				float3 temp_cast_2 = (tex2D( _OcclusionMap, staticSwitch297 ).g).xxx;
 				float temp_output_2_0_g2 = _OcclusionStrength;
 				float temp_output_3_0_g2 = ( 1.0 - temp_output_2_0_g2 );
 				float3 appendResult7_g2 = (float3(temp_output_3_0_g2 , temp_output_3_0_g2 , temp_output_3_0_g2));
-				float AO81 = (( ( temp_cast_1 * temp_output_2_0_g2 ) + appendResult7_g2 )).x;
+				float AO81 = (( ( temp_cast_2 * temp_output_2_0_g2 ) + appendResult7_g2 )).x;
 				
 				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
 				#ifdef _ALPHATEST_ON
@@ -758,7 +770,7 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 
 				float3 BaseColor = (BaseMap89).rgb;
 				float3 Normal = Normal77;
-				float3 Emission = ( ( ( temp_output_7_0_g6 - step( lerpResult9_g6 , temp_output_3_0_g6 ) ) * _EdgeColor ) * _EdgeColorIntensity ).rgb;
+				float3 Emission = staticSwitch388.rgb;
 				float3 Specular = 0.5;
 				float Metallic = Metallic79;
 				float Smoothness = Smoothness116;
@@ -1084,23 +1096,23 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 			};
 
 			CBUFFER_START(UnityPerMaterial)
-			float4 _EmissionColor;
-			float4 _EdgeColor;
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
+			float4 _EmissionColor;
 			float3 _DissolveDirection;
 			float3 _DissolveOffset;
 			float2 _NoiseUVSpeed;
-			float _EdgeWidth;
-			float _Smoothness;
-			float _NoiseScale;
-			float _Parallax;
-			float _AlphaClip;
+			float _Metallic;
+			float _EdgeColorIntensity;
 			float _DirectionEdgeWidthScale;
 			float _SmoothnessTextureChannel;
-			float _EdgeColorIntensity;
-			float _Metallic;
+			float _Smoothness;
+			float _EdgeWidth;
 			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
@@ -1134,7 +1146,6 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				int _PassValue;
 			#endif
 
-			sampler2D _EmissionMap;
 			sampler2D _BaseMap;
 			sampler2D _ParallaxMap;
 
@@ -1557,23 +1568,23 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 			};
 
 			CBUFFER_START(UnityPerMaterial)
-			float4 _EmissionColor;
-			float4 _EdgeColor;
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
+			float4 _EmissionColor;
 			float3 _DissolveDirection;
 			float3 _DissolveOffset;
 			float2 _NoiseUVSpeed;
-			float _EdgeWidth;
-			float _Smoothness;
-			float _NoiseScale;
-			float _Parallax;
-			float _AlphaClip;
+			float _Metallic;
+			float _EdgeColorIntensity;
 			float _DirectionEdgeWidthScale;
 			float _SmoothnessTextureChannel;
-			float _EdgeColorIntensity;
-			float _Metallic;
+			float _Smoothness;
+			float _EdgeWidth;
 			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
@@ -1607,7 +1618,6 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				int _PassValue;
 			#endif
 
-			sampler2D _EmissionMap;
 			sampler2D _BaseMap;
 			sampler2D _ParallaxMap;
 
@@ -2000,23 +2010,23 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 			};
 
 			CBUFFER_START(UnityPerMaterial)
-			float4 _EmissionColor;
-			float4 _EdgeColor;
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
+			float4 _EmissionColor;
 			float3 _DissolveDirection;
 			float3 _DissolveOffset;
 			float2 _NoiseUVSpeed;
-			float _EdgeWidth;
-			float _Smoothness;
-			float _NoiseScale;
-			float _Parallax;
-			float _AlphaClip;
+			float _Metallic;
+			float _EdgeColorIntensity;
 			float _DirectionEdgeWidthScale;
 			float _SmoothnessTextureChannel;
-			float _EdgeColorIntensity;
-			float _Metallic;
+			float _Smoothness;
+			float _EdgeWidth;
 			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
@@ -2050,9 +2060,9 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				int _PassValue;
 			#endif
 
-			sampler2D _EmissionMap;
 			sampler2D _BaseMap;
 			sampler2D _ParallaxMap;
+			sampler2D _EmissionMap;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"
@@ -2307,6 +2317,12 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				float4 tex2DNode10 = tex2D( _BaseMap, staticSwitch297 );
 				float4 BaseMap89 = ( tex2DNode10 * _BaseColor );
 				
+				#ifdef _EMISSION
+				float3 staticSwitch182 = ( (_EmissionColor).rgb * (tex2D( _EmissionMap, staticSwitch297 )).rgb );
+				#else
+				float3 staticSwitch182 = float3(0,0,0);
+				#endif
+				float3 Emissive104 = staticSwitch182;
 				float temp_output_2_0_g6 = _EdgeWidth;
 				float temp_output_1_0_g6 = 0.5;
 				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
@@ -2342,6 +2358,11 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
 				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
 				float lerpResult9_g6 = lerp( 0.0 , ( 1.0 + temp_output_2_0_g6 ) , temp_output_1_0_g6);
+				#ifdef _ALPHATEST_ON
+				float4 staticSwitch388 = ( ( ( temp_output_7_0_g6 - step( lerpResult9_g6 , temp_output_3_0_g6 ) ) * _EdgeColor ) * _EdgeColorIntensity );
+				#else
+				float4 staticSwitch388 = float4( Emissive104 , 0.0 );
+				#endif
 				
 				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
 				#ifdef _ALPHATEST_ON
@@ -2352,7 +2373,7 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				
 
 				float3 BaseColor = (BaseMap89).rgb;
-				float3 Emission = ( ( ( temp_output_7_0_g6 - step( lerpResult9_g6 , temp_output_3_0_g6 ) ) * _EdgeColor ) * _EdgeColorIntensity ).rgb;
+				float3 Emission = staticSwitch388.rgb;
 				float Alpha = (BaseMap89).a;
 				float AlphaClipThreshold = staticSwitch333;
 
@@ -2444,23 +2465,23 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 			};
 
 			CBUFFER_START(UnityPerMaterial)
-			float4 _EmissionColor;
-			float4 _EdgeColor;
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
+			float4 _EmissionColor;
 			float3 _DissolveDirection;
 			float3 _DissolveOffset;
 			float2 _NoiseUVSpeed;
-			float _EdgeWidth;
-			float _Smoothness;
-			float _NoiseScale;
-			float _Parallax;
-			float _AlphaClip;
+			float _Metallic;
+			float _EdgeColorIntensity;
 			float _DirectionEdgeWidthScale;
 			float _SmoothnessTextureChannel;
-			float _EdgeColorIntensity;
-			float _Metallic;
+			float _Smoothness;
+			float _EdgeWidth;
 			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
@@ -2494,7 +2515,6 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				int _PassValue;
 			#endif
 
-			sampler2D _EmissionMap;
 			sampler2D _BaseMap;
 			sampler2D _ParallaxMap;
 
@@ -2888,23 +2908,23 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 			};
 
 			CBUFFER_START(UnityPerMaterial)
-			float4 _EmissionColor;
-			float4 _EdgeColor;
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
+			float4 _EmissionColor;
 			float3 _DissolveDirection;
 			float3 _DissolveOffset;
 			float2 _NoiseUVSpeed;
-			float _EdgeWidth;
-			float _Smoothness;
-			float _NoiseScale;
-			float _Parallax;
-			float _AlphaClip;
+			float _Metallic;
+			float _EdgeColorIntensity;
 			float _DirectionEdgeWidthScale;
 			float _SmoothnessTextureChannel;
-			float _EdgeColorIntensity;
-			float _Metallic;
+			float _Smoothness;
+			float _EdgeWidth;
 			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
@@ -2938,7 +2958,6 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				int _PassValue;
 			#endif
 
-			sampler2D _EmissionMap;
 			sampler2D _BumpMap;
 			sampler2D _BaseMap;
 			sampler2D _ParallaxMap;
@@ -3419,23 +3438,23 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 			};
 
 			CBUFFER_START(UnityPerMaterial)
-			float4 _EmissionColor;
-			float4 _EdgeColor;
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
+			float4 _EmissionColor;
 			float3 _DissolveDirection;
 			float3 _DissolveOffset;
 			float2 _NoiseUVSpeed;
-			float _EdgeWidth;
-			float _Smoothness;
-			float _NoiseScale;
-			float _Parallax;
-			float _AlphaClip;
+			float _Metallic;
+			float _EdgeColorIntensity;
 			float _DirectionEdgeWidthScale;
 			float _SmoothnessTextureChannel;
-			float _EdgeColorIntensity;
-			float _Metallic;
+			float _Smoothness;
+			float _EdgeWidth;
 			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
@@ -3469,10 +3488,10 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				int _PassValue;
 			#endif
 
-			sampler2D _EmissionMap;
 			sampler2D _BaseMap;
 			sampler2D _ParallaxMap;
 			sampler2D _BumpMap;
+			sampler2D _EmissionMap;
 			sampler2D _MetallicGlossMap;
 			SAMPLER(sampler_MetallicGlossMap);
 			sampler2D _OcclusionMap;
@@ -3785,6 +3804,12 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				#endif
 				float3 Normal77 = staticSwitch223;
 				
+				#ifdef _EMISSION
+				float3 staticSwitch182 = ( (_EmissionColor).rgb * (tex2D( _EmissionMap, staticSwitch297 )).rgb );
+				#else
+				float3 staticSwitch182 = float3(0,0,0);
+				#endif
+				float3 Emissive104 = staticSwitch182;
 				float temp_output_2_0_g6 = _EdgeWidth;
 				float temp_output_1_0_g6 = 0.5;
 				float lerpResult5_g6 = lerp( ( 0.0 - temp_output_2_0_g6 ) , 1.0 , temp_output_1_0_g6);
@@ -3820,6 +3845,11 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				float temp_output_3_0_g6 = ( simpleNoise372 + ( dotResult10_g7 * _DirectionEdgeWidthScale ) );
 				float temp_output_7_0_g6 = step( lerpResult5_g6 , temp_output_3_0_g6 );
 				float lerpResult9_g6 = lerp( 0.0 , ( 1.0 + temp_output_2_0_g6 ) , temp_output_1_0_g6);
+				#ifdef _ALPHATEST_ON
+				float4 staticSwitch388 = ( ( ( temp_output_7_0_g6 - step( lerpResult9_g6 , temp_output_3_0_g6 ) ) * _EdgeColor ) * _EdgeColorIntensity );
+				#else
+				float4 staticSwitch388 = float4( Emissive104 , 0.0 );
+				#endif
 				
 				sampler2D tex244 = _MetallicGlossMap;
 				SamplerState ss244 = sampler_MetallicGlossMap;
@@ -3833,11 +3863,11 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				
 				float Smoothness116 = (localSampleMetallicSpecGloss244).w;
 				
-				float3 temp_cast_1 = (tex2D( _OcclusionMap, staticSwitch297 ).g).xxx;
+				float3 temp_cast_2 = (tex2D( _OcclusionMap, staticSwitch297 ).g).xxx;
 				float temp_output_2_0_g2 = _OcclusionStrength;
 				float temp_output_3_0_g2 = ( 1.0 - temp_output_2_0_g2 );
 				float3 appendResult7_g2 = (float3(temp_output_3_0_g2 , temp_output_3_0_g2 , temp_output_3_0_g2));
-				float AO81 = (( ( temp_cast_1 * temp_output_2_0_g2 ) + appendResult7_g2 )).x;
+				float AO81 = (( ( temp_cast_2 * temp_output_2_0_g2 ) + appendResult7_g2 )).x;
 				
 				float temp_output_10_0_g5 = ( 1.0 - temp_output_7_0_g6 );
 				#ifdef _ALPHATEST_ON
@@ -3849,7 +3879,7 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 
 				float3 BaseColor = (BaseMap89).rgb;
 				float3 Normal = Normal77;
-				float3 Emission = ( ( ( temp_output_7_0_g6 - step( lerpResult9_g6 , temp_output_3_0_g6 ) ) * _EdgeColor ) * _EdgeColorIntensity ).rgb;
+				float3 Emission = staticSwitch388.rgb;
 				float3 Specular = 0.5;
 				float Metallic = Metallic79;
 				float Smoothness = Smoothness116;
@@ -4021,23 +4051,23 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 			};
 
 			CBUFFER_START(UnityPerMaterial)
-			float4 _EmissionColor;
-			float4 _EdgeColor;
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
+			float4 _EmissionColor;
 			float3 _DissolveDirection;
 			float3 _DissolveOffset;
 			float2 _NoiseUVSpeed;
-			float _EdgeWidth;
-			float _Smoothness;
-			float _NoiseScale;
-			float _Parallax;
-			float _AlphaClip;
+			float _Metallic;
+			float _EdgeColorIntensity;
 			float _DirectionEdgeWidthScale;
 			float _SmoothnessTextureChannel;
-			float _EdgeColorIntensity;
-			float _Metallic;
+			float _Smoothness;
+			float _EdgeWidth;
 			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
@@ -4071,7 +4101,6 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				int _PassValue;
 			#endif
 
-			sampler2D _EmissionMap;
 			sampler2D _BaseMap;
 			sampler2D _ParallaxMap;
 
@@ -4429,23 +4458,23 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 			};
 
 			CBUFFER_START(UnityPerMaterial)
-			float4 _EmissionColor;
-			float4 _EdgeColor;
 			float4 _BaseMap_ST;
 			float4 _BaseColor;
+			float4 _EdgeColor;
+			float4 _EmissionColor;
 			float3 _DissolveDirection;
 			float3 _DissolveOffset;
 			float2 _NoiseUVSpeed;
-			float _EdgeWidth;
-			float _Smoothness;
-			float _NoiseScale;
-			float _Parallax;
-			float _AlphaClip;
+			float _Metallic;
+			float _EdgeColorIntensity;
 			float _DirectionEdgeWidthScale;
 			float _SmoothnessTextureChannel;
-			float _EdgeColorIntensity;
-			float _Metallic;
+			float _Smoothness;
+			float _EdgeWidth;
 			float _BumpScale;
+			float _Parallax;
+			float _AlphaClip;
+			float _NoiseScale;
 			float _OcclusionStrength;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
@@ -4479,7 +4508,6 @@ Shader "Universal Render Pipeline/Lit Dissolve"
 				int _PassValue;
 			#endif
 
-			sampler2D _EmissionMap;
 			sampler2D _BaseMap;
 			sampler2D _ParallaxMap;
 
@@ -4851,7 +4879,6 @@ Node;AmplifyShaderEditor.TemplateMultiPassMasterNode;363;3685.459,-18.63704;Floa
 Node;AmplifyShaderEditor.TemplateMultiPassMasterNode;364;3685.459,-18.63704;Float;False;False;-1;2;UnityEditor.ShaderGraphLitGUI;0;14;New Amplify Shader;c529a176ed71e28469f1696d802cd6d6;True;SceneSelectionPass;0;8;SceneSelectionPass;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;5;True;12;all;0;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;2;False;;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;1;LightMode=SceneSelectionPass;False;False;0;;0;0;Standard;0;False;0
 Node;AmplifyShaderEditor.TemplateMultiPassMasterNode;365;3685.459,-18.63704;Float;False;False;-1;2;UnityEditor.ShaderGraphLitGUI;0;14;New Amplify Shader;c529a176ed71e28469f1696d802cd6d6;True;ScenePickingPass;0;9;ScenePickingPass;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;5;True;12;all;0;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;1;LightMode=Picking;False;False;0;;0;0;Standard;0;False;0
 Node;AmplifyShaderEditor.TemplateMultiPassMasterNode;357;5272.556,-3.016144;Float;False;True;-1;2;NKStudio.ASEMaterialDissolveGUI;0;14;Universal Render Pipeline/Lit Dissolve;c529a176ed71e28469f1696d802cd6d6;True;Forward;0;1;Forward;20;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;5;True;12;all;0;False;True;1;1;False;;0;False;;1;1;False;;0;False;;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;True;True;True;True;0;False;;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;1;LightMode=UniversalForward;False;False;0;;0;0;Standard;41;Workflow;1;0;Surface;0;0;  Refraction Model;0;0;  Blend;0;0;Two Sided;1;0;Fragment Normal Space,InvertActionOnDeselection;0;0;Forward Only;0;0;Transmission;0;0;  Transmission Shadow;0.5,False,;0;Translucency;0;0;  Translucency Strength;1,False,;0;  Normal Distortion;0.5,False,;0;  Scattering;2,False,;0;  Direct;0.9,False,;0;  Ambient;0.1,False,;0;  Shadow;0.5,False,;0;Cast Shadows;1;0;Use Shadow Threshold;0;0;Receive Shadows;1;0;GPU Instancing;1;0;LOD CrossFade;1;0;Built-in Fog;1;0;_FinalColorxAlpha;0;0;Meta Pass;1;0;Override Baked GI;0;0;Extra Pre Pass;0;0;DOTS Instancing;0;0;Tessellation;0;0;  Phong;0;0;  Strength;0.5,False,;0;  Type;0;0;  Tess;16,False,;0;  Min;10,False,;0;  Max;25,False,;0;  Edge Length;16,False,;0;  Max Displacement;25,False,;0;Write Depth;0;0;  Early Z;0;0;Vertex Position,InvertActionOnDeselection;1;0;Debug Display;0;0;Clear Coat;0;0;0;10;False;True;True;True;True;True;True;True;True;True;False;;False;0
-Node;AmplifyShaderEditor.StaticSwitch;333;4975.878,393.4926;Inherit;False;Property;_Keyword0;Keyword 0;18;0;Create;True;0;0;0;False;0;False;0;0;0;False;_ALPHATEST_ON;Toggle;2;Key0;Key1;Fetch;True;True;Fragment;9;1;FLOAT;0;False;0;FLOAT;0;False;2;FLOAT;0;False;3;FLOAT;0;False;4;FLOAT;0;False;5;FLOAT;0;False;6;FLOAT;0;False;7;FLOAT;0;False;8;FLOAT;0;False;1;FLOAT;0
 Node;AmplifyShaderEditor.FunctionNode;367;4504.231,555.0072;Inherit;False;Dissolve;-1;;5;645db3aa9d0e6af419ef4238e7e10df2;0;5;9;FLOAT;0.5;False;2;FLOAT;0;False;3;COLOR;1,0.8470588,0.1568628,0;False;5;FLOAT;1;False;6;FLOAT;0;False;3;FLOAT;0;FLOAT;13;COLOR;14
 Node;AmplifyShaderEditor.RangedFloatNode;368;3839.637,578.782;Inherit;False;Property;_EdgeWidth;EdgeWidth;19;0;Create;True;0;0;0;False;0;False;0.05;0;0;1;0;1;FLOAT;0
 Node;AmplifyShaderEditor.ColorNode;369;3867.637,667.782;Inherit;False;Property;_EdgeColor;EdgeColor;20;1;[HDR];Create;True;0;0;0;False;0;False;0,2.917647,2.980392,1;0,2.917647,2.980392,1;True;0;5;COLOR;0;FLOAT;1;FLOAT;2;FLOAT;3;FLOAT;4
@@ -4871,6 +4898,8 @@ Node;AmplifyShaderEditor.Vector2Node;387;3108.053,998.0046;Inherit;False;Propert
 Node;AmplifyShaderEditor.FunctionNode;386;3335.053,866.0046;Inherit;False;UV Speed;-1;;10;26b6a76c09efc4841b014ab4e9a7ca35;0;2;7;FLOAT2;0,0;False;4;FLOAT2;0,0;False;1;FLOAT2;0
 Node;AmplifyShaderEditor.TextureCoordinatesNode;384;3001.053,855.0046;Inherit;False;0;-1;2;3;2;SAMPLER2D;;False;0;FLOAT2;1,1;False;1;FLOAT2;0,0;False;5;FLOAT2;0;FLOAT;1;FLOAT;2;FLOAT;3;FLOAT;4
 Node;AmplifyShaderEditor.RangedFloatNode;375;3785.521,1297.153;Inherit;False;Property;_DirectionEdgeWidthScale;DirectionEdgeWidthScale;21;0;Create;True;0;0;0;False;0;False;10;10;0;0;0;1;FLOAT;0
+Node;AmplifyShaderEditor.StaticSwitch;388;4894.703,328.1857;Inherit;False;Property;_Keyword1;Keyword 0;18;0;Create;True;0;0;0;False;0;False;0;0;0;False;_ALPHATEST_ON;Toggle;2;Key0;Key1;Fetch;True;True;Fragment;9;1;COLOR;0,0,0,0;False;0;COLOR;0,0,0,0;False;2;COLOR;0,0,0,0;False;3;COLOR;0,0,0,0;False;4;COLOR;0,0,0,0;False;5;COLOR;0,0,0,0;False;6;COLOR;0,0,0,0;False;7;COLOR;0,0,0,0;False;8;COLOR;0,0,0,0;False;1;COLOR;0
+Node;AmplifyShaderEditor.StaticSwitch;333;4913,485;Inherit;False;Property;_Keyword0;Keyword 0;18;0;Create;True;0;0;0;False;0;False;0;0;0;False;_ALPHATEST_ON;Toggle;2;Key0;Key1;Fetch;True;True;Fragment;9;1;FLOAT;0;False;0;FLOAT;0;False;2;FLOAT;0;False;3;FLOAT;0;False;4;FLOAT;0;False;5;FLOAT;0;False;6;FLOAT;0;False;7;FLOAT;0;False;8;FLOAT;0;False;1;FLOAT;0
 WireConnection;112;1;297;0
 WireConnection;183;0;176;0
 WireConnection;104;0;182;0
@@ -4917,13 +4946,12 @@ WireConnection;205;0;90;0
 WireConnection;206;0;90;0
 WireConnection;357;0;205;0
 WireConnection;357;1;78;0
-WireConnection;357;2;367;14
+WireConnection;357;2;388;0
 WireConnection;357;3;80;0
 WireConnection;357;4;118;0
 WireConnection;357;5;83;0
 WireConnection;357;6;206;0
 WireConnection;357;7;333;0
-WireConnection;333;0;367;13
 WireConnection;367;2;368;0
 WireConnection;367;3;369;0
 WireConnection;367;5;370;0
@@ -4943,5 +4971,8 @@ WireConnection;381;0;380;0
 WireConnection;383;0;381;0
 WireConnection;386;7;384;0
 WireConnection;386;4;387;0
+WireConnection;388;1;105;0
+WireConnection;388;0;367;14
+WireConnection;333;0;367;13
 ASEEND*/
-//CHKSM=E8C2933D656304D74BED6DC2A0ACE952BC733E16
+//CHKSM=8B21982DD4E5A72ECF4756B1740C6CCB8128FACF
